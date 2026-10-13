@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.1] — 2026-10-13
+
+### Added
+- Yandex Metrica integration with unsampled pageviews, visits, users and search visits per crawled URL (thanks @danzerzine).
+- Metrica data has its own tab with filters and exports, appears in URL Details and the orphan report, and is available over MCP.
+
+### Fixed
+- Clicking a row in the Broken Links, GA4, Search Console, PageSpeed, CrUX, AI and SEO Authority tabs now opens it in URL Details.
+- Anchor text and target=_blank checks now catch links to pages the menu already links to, instead of reporting 0.
+- MCP query and report tools now return Search Console and GA4 data instead of empty results.
+- An expired Google sign-in now explains the one-time fix for the 7-day token limit instead of asking you to reconnect weekly.
+- Smaller translation fixes in the setup guides.
+
 ## [1.0.0] — 2026-09-21
 
 ### Added
