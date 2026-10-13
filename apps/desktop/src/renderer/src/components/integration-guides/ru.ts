@@ -539,7 +539,7 @@ export const GUIDES_RU: Record<string, Guide> = {
       {
         problem: 'Connection broke after 7 days',
         solution:
-          'В режиме тестирования refresh-токены OAuth истекают каждые 7 дней. Настройки → Интеграции → Search Console → «Отключить» → «Подключить» для повторной авторизации. Чтобы избавиться от истечения, нужно провести приложение через проверку Google (1-4 недели).',
+          'Google аннулирует refresh-токены OAuth через 7 дней, пока экран согласия находится в статусе публикации "Testing". Постоянное решение: Google Cloud Console → APIs & Services → OAuth consent screen → "Publish app" (статус станет "In production"). Проверка приложения не требуется: предупреждение "unverified app" останется, но токены перестанут истекать. Затем Настройки → Интеграции → Search Console → «Отключить» → «Подключить» в последний раз.',
       },
     ],
     notes: [

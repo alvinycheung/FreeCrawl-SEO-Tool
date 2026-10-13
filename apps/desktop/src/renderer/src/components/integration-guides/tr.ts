@@ -541,7 +541,7 @@ export const GUIDES_TR: Record<string, Guide> = {
       {
         problem: 'Bağlantı 7 gün sonra patladı',
         solution:
-          'Testing modunda OAuth refresh token\'lar 7 günde bir expire olur. Settings → Integrations → Search Console → "Disconnect" → "Connect" ile yeniden bağlan. Production\'a geçmek için Google verification süreci gerekir (1-4 hafta).',
+          'Google, OAuth consent screen "Testing" yayın durumundayken refresh token\'ları 7 gün sonra geçersiz kılar. Kalıcı çözüm: Google Cloud Console → APIs & Services → OAuth consent screen → "Publish app" (durum "In production" olur). Verification incelemesi gerekmez — "unverified app" uyarısı kalır ama token\'lar artık expire olmaz. Ardından Settings → Integrations → Search Console → "Disconnect" → "Connect" ile son bir kez bağlan.',
       },
     ],
     notes: [

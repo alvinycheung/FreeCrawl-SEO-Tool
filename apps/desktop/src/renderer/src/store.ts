@@ -530,7 +530,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', flushConfigPersist);
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   config: loadInitialConfig(),
   progress: null,
   summary: null,
@@ -584,7 +584,13 @@ export const useAppStore = create<AppState>((set) => ({
   navigateToCategory: (c) => {
     // Some categories are only meaningful on specific tabs — switch the
     // active tab along with the category so the correct view renders.
-    const tab = tabForCategory(c);
+    // A category with no dedicated home stays on the current tab — but
+    // only when that tab is a URL table that honours `activeCategory`.
+    // Dedicated grids (Broken Links, Images, SERP, GA4, …) ignore it, so
+    // leaving the user there would show the old table under the new
+    // filter's label; land on Internal instead.
+    const tab =
+      tabForCategory(c) ?? (tabRendersUrlTable(get().activeTab) ? null : 'internal');
     set(tab ? { activeCategory: c, activeTab: tab } : { activeCategory: c });
   },
   setError: (e) => set({ error: e }),
@@ -716,6 +722,28 @@ export const useAppStore = create<AppState>((set) => ({
       selectedUrlIds: [],
     }),
 }));
+
+// Tabs whose grid is the category-filtered URL table (`UrlsTab`). The rest
+// mount a dedicated component that never reads `activeCategory` — keep in
+// step with the tab switch in App.tsx.
+const DEDICATED_GRID_TABS: ReadonlySet<TabKey> = new Set<TabKey>([
+  'images',
+  'broken-links',
+  'serp',
+  'pagespeed',
+  'crux',
+  'spelling',
+  'search-console',
+  'analytics',
+  'metrica',
+  'ai',
+  'seo',
+  'assistant',
+]);
+
+function tabRendersUrlTable(tab: TabKey): boolean {
+  return !DEDICATED_GRID_TABS.has(tab);
+}
 
 function tabForCategory(cat: UrlCategory): TabKey | null {
   // V2 — Comprehensive sidebar-click → top-level tab routing. Lets the
@@ -849,7 +877,10 @@ function tabForCategory(cat: UrlCategory): TabKey | null {
   ) {
     return 'response-codes';
   }
-  if (cat.startsWith('issues:analytics-')) return 'analytics';
+  // Page-level tag checks (no GA4 snippet, legacy UA, …) filter the URL
+  // table; the 'analytics' tab is the GA4 traffic grid, which ignores the
+  // category entirely and would show unrelated data (or a connect screen).
+  if (cat.startsWith('issues:analytics-')) return 'internal';
   if (
     cat === 'issues:anchor-text-too-long' ||
     cat === 'issues:anchor-text-generic' ||

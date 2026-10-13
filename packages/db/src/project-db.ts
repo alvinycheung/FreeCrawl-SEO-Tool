@@ -64,6 +64,7 @@ import type {
   LogThreatSummary,
 } from '@freecrawl/shared-types';
 import {
+  GENERIC_ANCHOR_TEXTS,
   ISSUE_COUNT_KEY,
   issueCategoriesBySeverity,
   normalizeDisabledIssues,
@@ -492,6 +493,12 @@ export interface UpsertUrlInput {
   titleCount?: number;
   imagesEmptyAlt?: number;
   emptyAnchorCount?: number;
+  /** Per-page link-level counters over every `<a>` (not just the deduped
+   *  link records): anchors > 100 chars, generic anchors, and
+   *  `target=_blank` without noopener / noreferrer. */
+  anchorTooLongCount?: number;
+  genericAnchorCount?: number;
+  targetBlankNoNoopenerCount?: number;
   appleTouchIcon?: string | null;
   manifestUrl?: string | null;
   feedUrl?: string | null;
@@ -632,6 +639,7 @@ const UPSERT_URL_SQL = `
     extraction_results,
     simhash, content_hash,
     title_count, images_empty_alt, empty_anchor_count,
+    anchor_too_long_count, generic_anchor_count, target_blank_no_noopener_count,
     apple_touch_icon, manifest_url, feed_url,
     microdata_count, rdfa_count, insecure_form_action_count, missing_sri_count,
     title_pixel_width, meta_pixel_width,
@@ -674,6 +682,7 @@ const UPSERT_URL_SQL = `
     :extraction_results,
     :simhash, :content_hash,
     :title_count, :images_empty_alt, :empty_anchor_count,
+    :anchor_too_long_count, :generic_anchor_count, :target_blank_no_noopener_count,
     :apple_touch_icon, :manifest_url, :feed_url,
     :microdata_count, :rdfa_count, :insecure_form_action_count, :missing_sri_count,
     :title_pixel_width, :meta_pixel_width,
@@ -776,6 +785,9 @@ const UPSERT_URL_SQL = `
     title_count = excluded.title_count,
     images_empty_alt = excluded.images_empty_alt,
     empty_anchor_count = excluded.empty_anchor_count,
+    anchor_too_long_count = excluded.anchor_too_long_count,
+    generic_anchor_count = excluded.generic_anchor_count,
+    target_blank_no_noopener_count = excluded.target_blank_no_noopener_count,
     apple_touch_icon = excluded.apple_touch_icon,
     manifest_url = excluded.manifest_url,
     feed_url = excluded.feed_url,
@@ -2161,6 +2173,9 @@ export class ProjectDb {
       title_count: input.titleCount ?? 0,
       images_empty_alt: input.imagesEmptyAlt ?? 0,
       empty_anchor_count: input.emptyAnchorCount ?? 0,
+      anchor_too_long_count: input.anchorTooLongCount ?? 0,
+      generic_anchor_count: input.genericAnchorCount ?? 0,
+      target_blank_no_noopener_count: input.targetBlankNoNoopenerCount ?? 0,
       apple_touch_icon: input.appleTouchIcon ?? null,
       manifest_url: input.manifestUrl ?? null,
       feed_url: input.feedUrl ?? null,
@@ -4234,7 +4249,7 @@ export class ProjectDb {
       .get(...args) as { c: number; u: number };
     const rowsDb = this.db
       .prepare(
-        `SELECT f.url AS from_url, f.status_code AS from_status,
+        `SELECT f.id AS from_url_id, f.url AS from_url, f.status_code AS from_status,
                 l.to_url AS to_url, t.status_code AS to_status,
                 l.anchor, l.rel, l.is_internal
          FROM links l
@@ -4245,6 +4260,7 @@ export class ProjectDb {
          LIMIT ? OFFSET ?`,
       )
       .all(...args, params.limit, params.offset) as unknown as {
+      from_url_id: number;
       from_url: string;
       from_status: number | null;
       to_url: string;
@@ -4257,6 +4273,7 @@ export class ProjectDb {
       total: totalRow.c,
       uniqueTargets: totalRow.u,
       rows: rowsDb.map((r) => ({
+        fromUrlId: r.from_url_id,
         fromUrl: r.from_url,
         fromStatusCode: r.from_status,
         toUrl: r.to_url,
@@ -4354,7 +4371,7 @@ export class ProjectDb {
 
     const rowsDb = this.db
       .prepare(
-        `SELECT u.url AS url, u.status_code AS status_code,
+        `SELECT u.id AS id, u.url AS url, u.status_code AS status_code,
                 pm.performance AS m_perf, pm.lcp AS m_lcp, pm.cls AS m_cls,
                 pm.fcp AS m_fcp, pm.tbt AS m_tbt, pm.speed_index AS m_si,
                 pm.tti AS m_tti, pm.max_potential_fid AS m_mpfid, pm.inp AS m_inp,
@@ -4398,6 +4415,7 @@ export class ProjectDb {
     return {
       total: totalRow.c,
       rows: rowsDb.map((r) => ({
+        id: r['id'] as number,
         url: r['url'] as string,
         statusCode: (r['status_code'] as number | null) ?? null,
         mobile: metrics(r, 'm'),
@@ -4484,7 +4502,7 @@ export class ProjectDb {
 
     const rowsDb = this.db
       .prepare(
-        `SELECT u.url AS url, u.status_code AS status_code,
+        `SELECT u.id AS id, u.url AS url, u.status_code AS status_code,
                 cp.lcp AS p_lcp, cp.cls AS p_cls, cp.inp AS p_inp,
                 cp.fcp AS p_fcp, cp.ttfb AS p_ttfb, cp.status AS p_status,
                 cp.error AS p_error, cp.collection_period AS p_period, cp.fetched_at AS p_fetched,
@@ -4524,6 +4542,7 @@ export class ProjectDb {
     return {
       total: totalRow.c,
       rows: rowsDb.map((r) => ({
+        id: r['id'] as number,
         url: r['url'] as string,
         statusCode: (r['status_code'] as number | null) ?? null,
         phone: metrics(r, 'p'),
@@ -4786,6 +4805,23 @@ export class ProjectDb {
   }
 
   /**
+   * Account id of the most recent pull stored in a GSC / GA4 results
+   * table, or '' when the table is empty (or holds only pre-multi-account
+   * rows). For readers that can't see the desktop's linked-account list —
+   * the MCP server — when the project has no saved account choice: the
+   * desktop adopts legacy rows into its first linked account without
+   * saving one.
+   */
+  latestGoogleAccountId(table: 'gsc_results' | 'ga4_results'): string {
+    const allowed = ['gsc_results', 'ga4_results'];
+    if (!allowed.includes(table)) return '';
+    const row = this.db
+      .prepare(`SELECT account_id FROM ${table} ORDER BY fetched_at DESC LIMIT 1`)
+      .get() as { account_id: string } | undefined;
+    return row?.account_id ?? '';
+  }
+
+  /**
    * Faz 7 — candidate query for the Search Console tab. Crawled internal
    * HTML 2xx pages left-joined with their stored GSC metrics, ordered
    * impressions-first so the pages Google shows most surface at the top.
@@ -4827,7 +4863,7 @@ export class ProjectDb {
     const accountId = params.accountId ?? '';
     // The full column projection + row mapper is shared by both the
     // crawled-pages branch and the orphan branch below.
-    const selectCols = `g.clicks AS clicks, g.impressions AS impressions,
+    const selectCols = `u.id AS id, g.clicks AS clicks, g.impressions AS impressions,
                 g.ctr AS ctr, g.position AS position,
                 g.fetched_at AS g_fetched,
                 i.verdict AS i_verdict,
@@ -4848,6 +4884,7 @@ export class ProjectDb {
       const iFetched = r['i_fetched'];
       const iStatus = r['i_status'];
       return {
+        id: (r['id'] as number | null) ?? null,
         url: r['url'] as string,
         statusCode: (r['status_code'] as number | null) ?? null,
         gsc:
@@ -5285,7 +5322,7 @@ export class ProjectDb {
 
     const rowsDb = this.db
       .prepare(
-        `SELECT u.url AS url, u.status_code AS status_code,
+        `SELECT u.id AS id, u.url AS url, u.status_code AS status_code,
                 s.provider AS provider, s.metrics AS metrics,
                 s.status AS status, s.error AS error,
                 s.fetched_at AS fetched_at
@@ -5323,6 +5360,7 @@ export class ProjectDb {
               }
             : null;
         return {
+          id: r['id'] as number,
           url: r['url'] as string,
           statusCode: (r['status_code'] as number | null) ?? null,
           seo,
@@ -5580,7 +5618,7 @@ export class ProjectDb {
 
     const rowsDb = this.db
       .prepare(
-        `SELECT u.url AS url, u.status_code AS status_code,
+        `SELECT u.id AS id, u.url AS url, u.status_code AS status_code,
                 a.sessions AS sessions, a.users AS users,
                 a.pageviews AS pageviews,
                 a.engagement_rate AS engagement_rate,
@@ -5601,6 +5639,7 @@ export class ProjectDb {
       rows: rowsDb.map((r) => {
         const fetchedAt = r['fetched_at'];
         return {
+          id: r['id'] as number,
           url: r['url'] as string,
           statusCode: (r['status_code'] as number | null) ?? null,
           ga4:
@@ -5743,7 +5782,7 @@ export class ProjectDb {
 
     const rowsDb = this.db
       .prepare(
-        `SELECT u.url AS url, u.status_code AS status_code,
+        `SELECT u.id AS id, u.url AS url, u.status_code AS status_code,
                 a.provider AS provider, a.model AS model,
                 a.response AS response,
                 a.tokens_in AS tokens_in, a.tokens_out AS tokens_out,
@@ -5778,6 +5817,7 @@ export class ProjectDb {
               }
             : null;
         return {
+          id: r['id'] as number,
           url: r['url'] as string,
           statusCode: (r['status_code'] as number | null) ?? null,
           ai,
@@ -7543,7 +7583,7 @@ export class ProjectDb {
     }
     const rows = this.db
       .prepare(
-        `SELECT f.url AS from_url, f.status_code AS from_status,
+        `SELECT f.id AS from_url_id, f.url AS from_url, f.status_code AS from_status,
                 l.to_url AS to_url, t.status_code AS to_status,
                 l.anchor, l.rel, l.is_internal
          FROM links l
@@ -7558,6 +7598,7 @@ export class ProjectDb {
       // footer produces one row per page, so a large site turns one broken
       // URL into hundreds of thousands of rows held in memory at once.
       .iterate(...args) as unknown as Iterable<{
+      from_url_id: number;
       from_url: string;
       from_status: number | null;
       to_url: string;
@@ -7568,6 +7609,7 @@ export class ProjectDb {
     }>;
     for (const r of rows) {
       yield {
+        fromUrlId: r.from_url_id,
         fromUrl: r.from_url,
         fromStatusCode: r.from_status,
         toUrl: r.to_url,
@@ -9990,6 +10032,11 @@ function urlPostNormSql(col: string): string {
   )`;
 }
 
+/** A JS string as a single-quoted SQL literal. */
+function sqlString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 /** Rows per write transaction in the yielding issue recompute. */
 const ISSUE_WRITE_BATCH = 2_000;
 
@@ -10063,39 +10110,48 @@ export const EXPENSIVE_ISSUE_DEFINITIONS: ReadonlyArray<readonly [string, string
   // aggregate ran past the 60 s reader budget on every tick.
   [
     'issues:anchor-text-too-long',
+    // The column counts every <a> on the page (the link graph keeps one
+    // record per target); the links sub-select keeps projects crawled
+    // before the column existed flagged until their next crawl.
     `is_external = 0 AND content_kind = 'html'
-     AND id IN (
-       SELECT from_url_id FROM links
-        WHERE anchor IS NOT NULL AND LENGTH(anchor) > 100
+     AND (
+       anchor_too_long_count > 0
+       OR id IN (
+         SELECT from_url_id FROM links
+          WHERE anchor IS NOT NULL AND LENGTH(anchor) > 100
+       )
      )`,
   ],
   [
     'issues:anchor-text-generic',
+    // Same column + legacy fallback split as anchor-text-too-long.
     `is_external = 0 AND content_kind = 'html'
-     AND id IN (
-       SELECT from_url_id FROM links
-        WHERE anchor IS NOT NULL
-          AND LOWER(TRIM(anchor)) IN (
-            'click here', 'click', 'here', 'read more', 'more',
-            'learn more', 'see more', 'continue reading', 'continue',
-            'this link', 'link', 'go', 'buraya', 'tıkla', 'devamı',
-            'devamını oku', 'daha fazla'
-          )
+     AND (
+       generic_anchor_count > 0
+       OR id IN (
+         SELECT from_url_id FROM links
+          WHERE anchor IS NOT NULL
+            AND LOWER(TRIM(anchor)) IN (${GENERIC_ANCHOR_TEXTS.map(sqlString).join(', ')})
+       )
      )`,
   ],
   [
     'issues:target-blank-no-noopener',
+    // Same column + legacy fallback split as anchor-text-too-long.
     `is_external = 0 AND content_kind = 'html'
-     AND id IN (
-       SELECT from_url_id FROM links
-        WHERE LOWER(COALESCE(target, '')) = '_blank'
-          AND (
-            rel IS NULL
-            OR (
-              LOWER(rel) NOT LIKE '%noopener%'
-              AND LOWER(rel) NOT LIKE '%noreferrer%'
+     AND (
+       target_blank_no_noopener_count > 0
+       OR id IN (
+         SELECT from_url_id FROM links
+          WHERE LOWER(COALESCE(target, '')) = '_blank'
+            AND (
+              rel IS NULL
+              OR (
+                LOWER(rel) NOT LIKE '%noopener%'
+                AND LOWER(rel) NOT LIKE '%noreferrer%'
+              )
             )
-          )
+       )
      )`,
   ],
   [

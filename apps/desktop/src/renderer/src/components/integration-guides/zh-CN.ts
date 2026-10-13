@@ -526,7 +526,7 @@ export const GUIDES_ZH_CN: Record<string, Guide> = {
       {
         problem: 'Connection broke after 7 days',
         solution:
-          '测试模式下 OAuth 刷新令牌每 7 天过期。设置 → 集成 → Search Console → “断开” → “连接”重新授权。要消除过期限制，需要让应用通过 Google 的验证流程（1-4 周）。',
+          '同意屏幕处于 "Testing" 发布状态时，Google 会在 7 天后使 OAuth 刷新令牌失效。永久解决：Google Cloud Console → APIs & Services → OAuth consent screen → "Publish app"（状态变为 "In production"）。无需通过验证审核："unverified app" 警告会保留，但令牌不再过期。然后设置 → 集成 → Search Console → “断开” → “连接”，最后再授权一次。',
       },
     ],
     notes: [

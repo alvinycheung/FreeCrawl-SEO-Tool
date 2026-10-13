@@ -302,4 +302,8 @@ export const MENU_TR: MenuLabels = {
   dlgConfirmClearDetail:
     'Bu işlem, aktif projedeki taranmış her URL, link, görsel, başlık ve kaynak snapshot\'ını kalıcı olarak siler. Geri alınamaz.',
   dlgDontAskAgain: 'Bir daha sorma',
+
+  // ── Google OAuth refresh failure ──
+  oauthRefreshExpired:
+    'Google kayıtlı oturumu reddetti ({reason}). Bu genellikle Google Cloud OAuth uygulamanızın "Testing" durumunda olduğunu gösterir; Google bu durumda bağlantıyı her 7 günde bir düşürür. Bir kez düzeltin: Google Cloud Console → OAuth consent screen → "Publish app" (verification incelemesi gerekmez), sonra bu entegrasyonu Bağlantıyı Kes ve tekrar Bağla.',
 };

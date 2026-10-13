@@ -56,6 +56,8 @@ export interface CruxMetrics {
  * has been fetched for the URL.
  */
 export interface CruxRow {
+  /** `urls.id` — what the Detail panel opens when the row is clicked. */
+  id: number;
   url: string;
   statusCode: number | null;
   phone: CruxMetrics | null;

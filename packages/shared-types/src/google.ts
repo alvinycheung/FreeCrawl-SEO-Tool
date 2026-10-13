@@ -71,6 +71,9 @@ export interface GscMetrics {
 
 /** One Search Console tab row — a crawled page joined with its GSC data. */
 export interface GscRow {
+  /** `urls.id` the Detail panel opens on a row click; null for a GSC URL
+   *  the crawl never reached (the orphan presets). */
+  id: number | null;
   url: string;
   statusCode: number | null;
   /** Null when this page has no Search Console impressions in the range. */
@@ -249,6 +252,8 @@ export interface Ga4Metrics {
 
 /** One Analytics tab row — a crawled page joined with its GA4 data. */
 export interface Ga4Row {
+  /** `urls.id` — what the Detail panel opens when the row is clicked. */
+  id: number;
   url: string;
   statusCode: number | null;
   /** Null when the page had no GA4 traffic in the range. */

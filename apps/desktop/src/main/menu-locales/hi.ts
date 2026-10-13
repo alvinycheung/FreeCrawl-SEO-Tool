@@ -304,4 +304,8 @@ export const MENU_HI: MenuLabels = {
   dlgConfirmClearDetail:
     'यह सक्रिय प्रोजेक्ट के हर क्रॉल किए गए URL, लिंक, छवि, हेडर और स्रोत स्नैपशॉट को स्थायी रूप से हटा देता है। इसे पूर्ववत नहीं किया जा सकता।',
   dlgDontAskAgain: 'मुझसे फिर न पूछें',
+
+  // ── Google OAuth refresh failure ──
+  oauthRefreshExpired:
+    'Google ने सहेजा हुआ साइन-इन अस्वीकार कर दिया ({reason})। इसका आमतौर पर मतलब है कि आपका Google Cloud OAuth ऐप "Testing" स्थिति में है, जहाँ Google हर 7 दिन में कनेक्शन समाप्त कर देता है। एक बार ठीक करें: Google Cloud Console → OAuth consent screen → "Publish app" (सत्यापन समीक्षा की ज़रूरत नहीं), फिर इस इंटीग्रेशन को डिस्कनेक्ट करके दोबारा कनेक्ट करें।',
 };

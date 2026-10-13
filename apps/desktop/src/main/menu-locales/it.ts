@@ -304,4 +304,8 @@ export const MENU_IT: MenuLabels = {
   dlgConfirmClearDetail:
     'Questa operazione elimina in modo permanente ogni URL scansionato, link, immagine, header e snapshot del codice sorgente nel progetto attivo. Non è reversibile.',
   dlgDontAskAgain: 'Non chiedermelo più',
+
+  // ── Google OAuth refresh failure ──
+  oauthRefreshExpired:
+    'Google ha rifiutato l\'accesso salvato ({reason}). Di solito significa che la tua app OAuth di Google Cloud è nello stato "Testing", in cui Google fa scadere la connessione ogni 7 giorni. Risolvi una volta per tutte: Google Cloud Console → OAuth consent screen → "Publish app" (nessuna revisione di verifica), poi Disconnetti e Connetti di nuovo questa integrazione.',
 };

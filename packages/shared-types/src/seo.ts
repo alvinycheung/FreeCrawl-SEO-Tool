@@ -61,6 +61,8 @@ export interface SeoResult {
 
 /** One SEO tab row — a crawled page joined with its provider data. */
 export interface SeoRow {
+  /** `urls.id` — what the Detail panel opens when the row is clicked. */
+  id: number;
   url: string;
   statusCode: number | null;
   /** Null when this page has no result for the currently-queried provider. */

@@ -532,7 +532,7 @@ export const GUIDES_KO: Record<string, Guide> = {
       {
         problem: 'Connection broke after 7 days',
         solution:
-          '테스트 모드에서는 OAuth 리프레시 토큰이 7일마다 만료됩니다. 설정 → 통합 → Search Console → "연결 해제" → "연결"로 다시 인증하세요. 만료를 없애려면 앱을 Google 검증 절차(1-4주)에 통과시켜야 합니다.',
+          '동의 화면이 "Testing" 게시 상태인 동안 Google은 OAuth 리프레시 토큰을 7일 후 만료시킵니다. 영구 해결: Google Cloud Console → APIs & Services → OAuth consent screen → "Publish app"(상태가 "In production"으로 바뀜). 검증 심사는 필요 없습니다. "unverified app" 경고는 남지만 토큰은 더 이상 만료되지 않습니다. 그다음 설정 → 연동 → Search Console → "연결 해제" → "연결"로 마지막 한 번만 다시 인증하세요.',
       },
     ],
     notes: [

@@ -304,4 +304,8 @@ export const MENU_ES: MenuLabels = {
   dlgConfirmClearDetail:
     'Esto elimina de forma permanente cada URL rastreada, enlace, imagen, cabecera e instantánea del código fuente del proyecto activo. No se puede deshacer.',
   dlgDontAskAgain: 'No volver a preguntar',
+
+  // ── Google OAuth refresh failure ──
+  oauthRefreshExpired:
+    'Google rechazó el inicio de sesión guardado ({reason}). Normalmente significa que tu app OAuth de Google Cloud está en estado "Testing", donde Google caduca la conexión cada 7 días. Arréglalo una vez: Google Cloud Console → OAuth consent screen → "Publish app" (sin revisión de verificación) y luego Desconecta y Conecta esta integración de nuevo.',
 };

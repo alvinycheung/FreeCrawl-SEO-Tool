@@ -96,8 +96,11 @@ noun and the second the verb.
 
 - **es / pt-BR / fr / it** — use the infinitive for button labels and menu
   actions (`Exportar`, `Exporter`, `Esportare` → but prefer the established
-  UI convention: `Exportar` / `Exporter` / `Esporta`). Address the user with
-  the formal/impersonal register; avoid `tú` / `tu` imperatives in help text.
+  UI convention: `Exportar` / `Exporter` / `Esporta`). Address the user in
+  the register each locale already ships: `es` and `it` use `tú` / `tu`
+  imperatives (`Abre…`, `Apri…`), `fr` uses `vous` (`Ouvrez…`) and `pt-BR`
+  uses `você` (`Abra…`). Keep new strings in that register — switching
+  register inside one language reads as machine translation.
 - **ru** — button labels are imperative verbs or verbal nouns
   (`Экспорт`, `Остановить`). Respect the three plural forms
   (`_one` / `_few` / `_many` / `_other`).

@@ -550,7 +550,7 @@ export const GUIDES_ES: Record<string, Guide> = {
       {
         problem: 'Connection broke after 7 days',
         solution:
-          'Los refresh tokens de OAuth caducan cada 7 días en modo de pruebas. Ajustes → Integraciones → Search Console → "Desconectar" → "Conectar" para volver a autenticarte. Para librarte de la caducidad tienes que pasar la app por el proceso de verificación de Google (1-4 semanas).',
+          'Google caduca los refresh tokens de OAuth a los 7 días mientras la pantalla de consentimiento está en estado de publicación "Testing". Solución definitiva: Google Cloud Console → APIs & Services → OAuth consent screen → "Publish app" (el estado pasa a "In production"). No hace falta la revisión de verificación: el aviso de "unverified app" se mantiene, pero los tokens dejan de caducar. Después, Ajustes → Integraciones → Search Console → "Desconectar" → "Conectar" por última vez.',
       },
     ],
     notes: [

@@ -2329,6 +2329,8 @@ export interface AdvancedFilter {
 }
 
 export interface BrokenLinkRow {
+  /** Crawled id of the linking page — lets the Broken Links grid open it in the Detail panel. */
+  fromUrlId: number;
   fromUrl: string;
   fromStatusCode: number | null;
   toUrl: string;

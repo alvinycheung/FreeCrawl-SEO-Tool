@@ -304,4 +304,8 @@ export const MENU_RU: MenuLabels = {
   dlgConfirmClearDetail:
     'Это безвозвратно удалит каждый обойдённый URL, ссылку, изображение, заголовок и снимок исходного кода в активном проекте. Отменить нельзя.',
   dlgDontAskAgain: 'Больше не спрашивать',
+
+  // ── Google OAuth refresh failure ──
+  oauthRefreshExpired:
+    'Google отклонил сохранённый вход ({reason}). Обычно это означает, что ваше OAuth-приложение в Google Cloud находится в статусе "Testing", при котором Google сбрасывает подключение каждые 7 дней. Исправьте один раз: Google Cloud Console → OAuth consent screen → "Publish app" (проверка не требуется), затем отключите и снова подключите эту интеграцию.',
 };

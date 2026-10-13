@@ -27,6 +27,8 @@ export interface AiResult {
 
 /** One AI tab row — a crawled page joined with its latest AI result. */
 export interface AiRow {
+  /** `urls.id` — what the Detail panel opens when the row is clicked. */
+  id: number;
   url: string;
   statusCode: number | null;
   /** Null when this page has no result for the queried provider. */

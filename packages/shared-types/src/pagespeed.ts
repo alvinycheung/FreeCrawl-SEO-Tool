@@ -65,6 +65,8 @@ export interface PagespeedMetrics {
  * strategy has been run for the URL.
  */
 export interface PagespeedRow {
+  /** `urls.id` — what the Detail panel opens when the row is clicked. */
+  id: number;
   url: string;
   statusCode: number | null;
   mobile: PagespeedMetrics | null;

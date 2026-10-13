@@ -32,6 +32,7 @@ import type { GoogleAccount, GoogleAuthState } from '@freecrawl/shared-types';
 import { apiFetch } from './api-fetch.js';
 import { resolveCredentials } from './credentials.js';
 import * as logger from './logger.js';
+import { L } from './menu-i18n.js';
 
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
@@ -568,10 +569,20 @@ export async function getAccessToken(
   });
   const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
   if (!res.ok || !json || typeof json['access_token'] !== 'string') {
+    const code = json?.['error'] as string | undefined;
     const msg =
       (json?.['error_description'] as string | undefined) ??
-      (json?.['error'] as string | undefined) ??
+      code ??
       `token refresh failed (HTTP ${res.status})`;
+    // `invalid_grant` (Google's description is just "Bad Request") is the
+    // refresh token itself being dead. With a BYOC client that is almost
+    // always the "Testing" publishing status, where Google expires refresh
+    // tokens after 7 days — tell the user the one-time fix instead of the
+    // generic "reconnect", which they'd otherwise repeat every week.
+    if (code === 'invalid_grant') {
+      logger.log('warn', 'main', `google-oauth: refresh rejected for "${integrationId}": ${msg}`);
+      throw new Error(L().oauthRefreshExpired.replace('{reason}', msg));
+    }
     throw new Error(`${msg} — you may need to reconnect this integration.`);
   }
   const token = json['access_token'] as string;

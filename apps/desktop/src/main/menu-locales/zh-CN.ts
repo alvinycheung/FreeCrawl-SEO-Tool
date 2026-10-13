@@ -299,4 +299,8 @@ export const MENU_ZH_CN: MenuLabels = {
   dlgConfirmClearDetail:
     '此操作将永久删除当前项目中每个已抓取的 URL、链接、图片、响应头和源码快照，且无法撤销。',
   dlgDontAskAgain: '不再询问',
+
+  // ── Google OAuth refresh failure ──
+  oauthRefreshExpired:
+    'Google 拒绝了已保存的登录（{reason}）。这通常表示你的 Google Cloud OAuth 应用处于 "Testing" 状态，Google 会每 7 天使连接失效。一次性修复：Google Cloud Console → OAuth consent screen → "Publish app"（无需验证审核），然后断开并重新连接此集成。',
 };

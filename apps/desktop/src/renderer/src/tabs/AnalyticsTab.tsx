@@ -59,6 +59,11 @@ function relativeTime(iso: string): string {
 export function AnalyticsTab() {
   const { t } = useTranslation();
   const dataVersion = useAppStore((s) => s.dataVersion);
+  // Clicking a row opens its page in the Detail panel below, as in the URL
+  // tables — without this the panel kept whatever another tab had picked.
+  const selectedUrlId = useAppStore((s) => s.selectedUrlId);
+  const setSelectedUrlId = useAppStore((s) => s.setSelectedUrlId);
+  const setSelectedUrlIds = useAppStore((s) => s.setSelectedUrlIds);
   const crawlProgress = useAppStore((s) => s.progress);
 
   const [stage, setStage] = useState<Stage>('loading');
@@ -522,7 +527,14 @@ export function AnalyticsTab() {
                     transform: `translateY(${vRow.start}px)`,
                   }}
                 >
-                  <Ga4DataRow row={row} />
+                  <Ga4DataRow
+                    row={row}
+                    active={selectedUrlId === row.id}
+                    onSelect={() => {
+                      setSelectedUrlId(row.id);
+                      setSelectedUrlIds([row.id]);
+                    }}
+                  />
                 </div>
               );
             })}
@@ -558,7 +570,16 @@ export function AnalyticsTab() {
   );
 }
 
-function Ga4DataRow({ row }: { row: Ga4Row }) {
+function Ga4DataRow({
+  row,
+  active,
+  onSelect,
+}: {
+  row: Ga4Row;
+  /** The page the Detail panel is showing. */
+  active: boolean;
+  onSelect: () => void;
+}) {
   const a = row.ga4;
   const status = row.statusCode;
   const statusCls =
@@ -571,7 +592,12 @@ function Ga4DataRow({ row }: { row: Ga4Row }) {
           : 'text-red-400';
 
   return (
-    <div className="flex h-full items-center text-[11px] odd:bg-surface-900/20 hover:bg-surface-800/40">
+    <div
+      onClick={onSelect}
+      className={`flex h-full items-center text-[11px] cursor-pointer ${
+        active ? 'bg-accent-500/20' : 'odd:bg-surface-900/20 hover:bg-surface-800/40'
+      }`}
+    >
       <div className="flex-1 truncate px-2 text-surface-200" title={row.url}>
         {row.url}
       </div>

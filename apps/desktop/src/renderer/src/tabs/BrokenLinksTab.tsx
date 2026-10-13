@@ -128,6 +128,8 @@ export function BrokenLinksTab() {
   const activeCategory = useAppStore((s) => s.activeCategory);
   const dataVersion = useAppStore((s) => s.dataVersion);
   const progress = useAppStore((s) => s.progress);
+  const setSelectedUrlId = useAppStore((s) => s.setSelectedUrlId);
+  const setSelectedUrlIds = useAppStore((s) => s.setSelectedUrlIds);
   const [rows, setRows] = useState<BrokenLinkRow[]>([]);
   const [total, setTotal] = useState(0);
   // Distinct broken target URLs — stable across crawls of different
@@ -226,6 +228,44 @@ export function BrokenLinksTab() {
     anchorRef.current = null;
     dragRef.current = null;
   }, [search, internal]);
+
+  // Mirror the cell selection into the global URL selection so the
+  // Detail panel below follows the clicked row's *source* page — the
+  // crawled URL that carries the broken link. Without this the panel
+  // kept showing whatever was picked on the previous tab. Multi-row
+  // picks aggregate (distinct pages, table order); the anchor cell's
+  // row is the primary one. An empty local selection is left alone:
+  // filter changes reset it, and that must not blank the panel.
+  useEffect(() => {
+    if (selected.size === 0) return;
+    const ids: number[] = [];
+    const seen = new Set<number>();
+    const rowIdxs = [...selected]
+      .map((k) => Number(k.split(':')[0]))
+      .filter((n) => Number.isFinite(n))
+      .sort((a, b) => a - b);
+    for (const ri of rowIdxs) {
+      const id = rows[ri]?.fromUrlId;
+      if (id === undefined || seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+    if (ids.length === 0) return;
+    const anchorId = anchorRef.current ? rows[anchorRef.current.r]?.fromUrlId : undefined;
+    const primary = anchorId !== undefined && seen.has(anchorId) ? anchorId : ids[0]!;
+    // A poll refresh replaces `rows` with equal content; skip the write
+    // when nothing changed so the Detail panel isn't re-fetched every tick.
+    const cur = useAppStore.getState();
+    if (
+      cur.selectedUrlId === primary &&
+      cur.selectedUrlIds.length === ids.length &&
+      cur.selectedUrlIds.every((id, i) => id === ids[i])
+    ) {
+      return;
+    }
+    setSelectedUrlId(primary);
+    setSelectedUrlIds(ids);
+  }, [selected, rows, setSelectedUrlId, setSelectedUrlIds]);
 
   // Any mouseup ends a drag — even one released outside the table.
   useEffect(() => {

@@ -76,6 +76,8 @@ function relativeTime(iso: string): string {
 export function PageSpeedTab() {
   const { t } = useTranslation();
   const dataVersion = useAppStore((s) => s.dataVersion);
+  const setSelectedUrlId = useAppStore((s) => s.setSelectedUrlId);
+  const setSelectedUrlIds = useAppStore((s) => s.setSelectedUrlIds);
   const crawlProgress = useAppStore((s) => s.progress);
   const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
 
@@ -444,7 +446,13 @@ export function PageSpeedTab() {
                   <PageSpeedRow
                     row={row}
                     selected={selected.has(row.url)}
-                    onToggle={() => toggleRow(row.url)}
+                    onToggle={() => {
+                      toggleRow(row.url);
+                      // The click still picks the row for the next run; it
+                      // also opens the page in the Detail panel below.
+                      setSelectedUrlId(row.id);
+                      setSelectedUrlIds([row.id]);
+                    }}
                   />
                 </div>
               );

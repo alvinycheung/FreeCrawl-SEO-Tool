@@ -304,4 +304,8 @@ export const MENU_FR: MenuLabels = {
   dlgConfirmClearDetail:
     'Cette action supprime définitivement chaque URL explorée, lien, image, en-tête et instantané du code source du projet actif. Elle est irréversible.',
   dlgDontAskAgain: 'Ne plus me demander',
+
+  // ── Google OAuth refresh failure ──
+  oauthRefreshExpired:
+    'Google a rejeté la connexion enregistrée ({reason}). Cela signifie généralement que votre application OAuth Google Cloud est en statut "Testing", où Google fait expirer la connexion tous les 7 jours. Corrigez-le une fois : Google Cloud Console → OAuth consent screen → "Publish app" (aucune vérification requise), puis Déconnectez et Connectez à nouveau cette intégration.',
 };

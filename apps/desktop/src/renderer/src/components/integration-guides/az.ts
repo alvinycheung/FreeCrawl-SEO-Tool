@@ -544,7 +544,7 @@ export const GUIDES_AZ: Record<string, Guide> = {
       {
         problem: 'Connection broke after 7 days',
         solution:
-          'Test rejimində OAuth yeniləmə tokenləri hər 7 gündə bitir. Parametrlər → İnteqrasiyalar → Search Console → "Bağlantını kəs" → "Bağlan" ilə yenidən autentifikasiya edin. Bitmədən qurtulmaq üçün tətbiqi Google-un təsdiq prosesindən (1-4 həftə) keçirməlisiniz.',
+          'Razılıq ekranı "Testing" nəşr statusunda olduğu müddətcə Google OAuth yeniləmə tokenlərini 7 gündən sonra etibarsız edir. Daimi həll: Google Cloud Console → APIs & Services → OAuth consent screen → "Publish app" (status "In production" olur). Təsdiq yoxlaması tələb olunmur — "unverified app" xəbərdarlığı qalır, amma tokenlər artıq bitmir. Sonra Parametrlər → İnteqrasiyalar → Search Console → "Bağlantını kəs" → "Bağlan" ilə son dəfə yenidən daxil olun.',
       },
     ],
     notes: [

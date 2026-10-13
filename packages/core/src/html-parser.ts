@@ -9,6 +9,7 @@ import type {
   LinkPosition,
   SchemaFinding,
 } from '@freecrawl/shared-types';
+import { GENERIC_ANCHOR_TEXTS } from '@freecrawl/shared-types';
 import {
   normalizeUrl,
   isSameHost,
@@ -17,6 +18,8 @@ import {
 } from './url-utils.js';
 import { computeContentFingerprint } from './simhash.js';
 import { runExtractionRules } from './extraction.js';
+
+const GENERIC_ANCHORS: ReadonlySet<string> = new Set(GENERIC_ANCHOR_TEXTS);
 
 export interface HreflangEntry {
   /** Language tag from `hreflang` attribute (e.g. "tr", "en-US", "x-default"). */
@@ -201,6 +204,12 @@ export interface ParsedPage {
   feedUrl: string | null;
   /** Number of internal hyperlinks with no usable anchor text or image alt. */
   emptyAnchorCount: number;
+  /** `<a href>` elements whose anchor text is longer than 100 characters. */
+  anchorTooLongCount: number;
+  /** `<a href>` elements whose anchor is a generic phrase (`GENERIC_ANCHOR_TEXTS`). */
+  genericAnchorCount: number;
+  /** `<a target="_blank">` elements without `rel="noopener"` / `noreferrer`. */
+  targetBlankNoNoopenerCount: number;
   /**
    * Number of `<a>` elements that look clickable but are NOT crawlable —
    * either no `href` at all (with `onclick`), `href="javascript:…"`, or
@@ -1289,6 +1298,9 @@ export function parseHtml(
   }
 
   let emptyAnchorCount = 0;
+  let anchorTooLongCount = 0;
+  let genericAnchorCount = 0;
+  let targetBlankNoNoopenerCount = 0;
   // JS-only / non-crawlable anchors. Three patterns count toward this
   // number — see the field doc on `parseHtml` return for the rationale:
   //   1. `<a onclick="…">`               (no href at all)
@@ -1345,6 +1357,38 @@ export function parseHtml(
     }
     const $el = $(el);
     const rel = ($el.attr('rel') ?? '').trim().toLowerCase() || null;
+    const target = ($el.attr('target') ?? '').trim() || null;
+    const rawAnchor = $el.text().replace(/\s+/g, ' ').trim().slice(0, 200) || null;
+    const anchor = rawAnchor ? decodeEntities(rawAnchor) : null;
+
+    // Image inside <a>: capture its alt attribute so the detail table can
+    // show it alongside the plain anchor text.
+    let altText: string | null = null;
+    const imgAlt = $el.find('img[alt]').first().attr('alt');
+    if (imgAlt !== undefined) {
+      altText = decodeEntities(imgAlt.trim());
+      if (altText === '') altText = null;
+    }
+
+    const isInternal = isSameHost(pageUrl, normalized, opts);
+
+    // Link-level checks count every <a>, before the per-target dedupe
+    // below: the link graph keeps one record per target, so an icon-only,
+    // generic or `target=_blank` link to a page the nav already links to
+    // never reached the `links` table and the page went unflagged.
+    // Empty anchor: no usable text inside the <a> AND no alt on a nested
+    // image. Common accessibility/SEO failure on icon-only or image-only
+    // links. Only count internal links — externals aren't our problem.
+    if (isInternal && !anchor && !altText) emptyAnchorCount++;
+    if (anchor && anchor.length > 100) anchorTooLongCount++;
+    if (anchor && GENERIC_ANCHORS.has(anchor.trim().toLowerCase())) genericAnchorCount++;
+    if (
+      target?.toLowerCase() === '_blank' &&
+      !rel?.includes('noopener') &&
+      !rel?.includes('noreferrer')
+    ) {
+      targetBlankNoNoopenerCount++;
+    }
 
     // Same target linked more than once (a nav/footer link that also
     // appears in the body). Keep the MOST permissive occurrence rather
@@ -1360,36 +1404,14 @@ export function parseHtml(
         existing.rel = rel;
         // A followable content link also carries the more useful anchor
         // text than an icon-only nav link, so take it when we had none.
-        if (!existing.anchor) {
-          const upgradedAnchor =
-            $el.text().replace(/\s+/g, ' ').trim().slice(0, 200) || null;
-          if (upgradedAnchor) existing.anchor = decodeEntities(upgradedAnchor);
-        }
+        if (!existing.anchor && anchor) existing.anchor = anchor;
       }
       return;
     }
-    const target = ($el.attr('target') ?? '').trim() || null;
-    const rawAnchor = $el.text().replace(/\s+/g, ' ').trim().slice(0, 200) || null;
-    const anchor = rawAnchor ? decodeEntities(rawAnchor) : null;
 
-    // Image inside <a>: capture its alt attribute so the detail table can
-    // show it alongside the plain anchor text.
-    let altText: string | null = null;
-    const imgAlt = $el.find('img[alt]').first().attr('alt');
-    if (imgAlt !== undefined) {
-      altText = decodeEntities(imgAlt.trim());
-      if (altText === '') altText = null;
-    }
-
-    const isInternal = isSameHost(pageUrl, normalized, opts);
     const pathType = detectPathType(href);
     const linkPath = buildLinkPath(el);
     const linkPosition = detectLinkPosition(el);
-
-    // Empty anchor: no usable text inside the <a> AND no alt on a nested
-    // image. Common accessibility/SEO failure on icon-only or image-only
-    // links. Only count internal links — externals aren't our problem.
-    if (isInternal && !anchor && !altText) emptyAnchorCount++;
 
     linkMap.set(normalized, {
       fromUrl: pageUrl,
@@ -1739,6 +1761,9 @@ export function parseHtml(
     manifestUrl,
     feedUrl,
     emptyAnchorCount,
+    anchorTooLongCount,
+    genericAnchorCount,
+    targetBlankNoNoopenerCount,
     jsOnlyLinksCount,
     textCodeRatio,
     fleschReadingEase: readability.fleschReadingEase,

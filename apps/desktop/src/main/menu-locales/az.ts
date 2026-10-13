@@ -309,4 +309,8 @@ export const MENU_AZ: MenuLabels = {
   dlgConfirmClearDetail:
     'Bu, aktiv layihədəki hər taranmış URL-i, keçidi, şəkli, başlığı və mənbə görüntüsünü həmişəlik silir. Geri qaytarıla bilməz.',
   dlgDontAskAgain: 'Bir daha soruşma',
+
+  // ── Google OAuth refresh failure ──
+  oauthRefreshExpired:
+    'Google yadda saxlanılan girişi rədd etdi ({reason}). Bu adətən Google Cloud OAuth tətbiqinizin "Testing" statusunda olduğunu bildirir; bu halda Google bağlantını hər 7 gündə bir bitirir. Bir dəfə düzəldin: Google Cloud Console → OAuth consent screen → "Publish app" (təsdiq yoxlaması tələb olunmur), sonra bu inteqrasiyanı ayırıb yenidən qoşun.',
 };

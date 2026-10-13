@@ -533,7 +533,7 @@ export const GUIDES_HI: Record<string, Guide> = {
       {
         problem: 'Connection broke after 7 days',
         solution:
-          'टेस्टिंग मोड में OAuth रिफ़्रेश टोकन हर 7 दिन में समाप्त होते हैं। सेटिंग्स → इंटीग्रेशन → Search Console → "डिस्कनेक्ट" → "कनेक्ट" से पुनः प्रमाणित करें। समाप्ति से छुटकारा पाने के लिए ऐप को Google की सत्यापन प्रक्रिया (1-4 सप्ताह) से गुज़ारना होगा।',
+          'जब तक consent screen "Testing" प्रकाशन स्थिति में है, Google OAuth रिफ़्रेश टोकन को 7 दिन बाद समाप्त कर देता है। स्थायी समाधान: Google Cloud Console → APIs & Services → OAuth consent screen → "Publish app" (स्थिति "In production" हो जाती है)। सत्यापन समीक्षा की ज़रूरत नहीं है — "unverified app" चेतावनी बनी रहती है, पर टोकन समाप्त होना बंद हो जाते हैं। फिर सेटिंग्स → इंटीग्रेशन → Search Console → "डिस्कनेक्ट" → "कनेक्ट" आख़िरी बार करें।',
       },
     ],
     notes: [

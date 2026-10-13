@@ -335,6 +335,10 @@ export interface MenuLabels {
   dlgConfirmClearMsg: string;
   dlgConfirmClearDetail: string;
   dlgDontAskAgain: string;
+
+  // ── Google OAuth refresh failure ──
+  /** `{reason}` = Google's error code / description (e.g. `invalid_grant`). */
+  oauthRefreshExpired: string;
 }
 
 const MENU_LABELS: Record<UiLanguage, MenuLabels> = {

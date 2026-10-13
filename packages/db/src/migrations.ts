@@ -2343,6 +2343,29 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 94,
+    name: 'add_link_level_anchor_counters',
+    // Per-page counters the HTML parser takes over every `<a>`. The link
+    // graph keeps one record per target, so a long, generic or
+    // `target=_blank` link to a page the nav already links to never
+    // reached `links` and the anchor checks missed the page.
+    up: (db) => {
+      const cols = db
+        .prepare('PRAGMA table_info(urls)')
+        .all() as unknown as { name: string }[];
+      const names = new Set(cols.map((c) => c.name));
+      for (const col of [
+        'anchor_too_long_count',
+        'generic_anchor_count',
+        'target_blank_no_noopener_count',
+      ]) {
+        if (!names.has(col)) {
+          db.exec(`ALTER TABLE urls ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`);
+        }
+      }
+    },
+  },
 ];
 
 export function runMigrations(db: DatabaseSync): void {

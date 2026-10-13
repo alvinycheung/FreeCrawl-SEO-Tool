@@ -549,7 +549,7 @@ export const GUIDES_FR: Record<string, Guide> = {
       {
         problem: 'Connection broke after 7 days',
         solution:
-          'Les jetons de rafraîchissement OAuth expirent tous les 7 jours en mode test. Paramètres → Intégrations → Search Console → "Déconnecter" → "Connecter" pour vous réauthentifier. Pour supprimer cette expiration, il faut faire passer l\'application par le processus de validation de Google (1-4 semaines).',
+          'Google fait expirer les jetons de rafraîchissement OAuth après 7 jours tant que l\'écran de consentement est en statut de publication "Testing". Correctif définitif : Google Cloud Console → APIs & Services → OAuth consent screen → "Publish app" (le statut passe à "In production"). Aucune vérification n\'est requise : l\'avertissement "unverified app" reste, mais les jetons n\'expirent plus. Ensuite, Paramètres → Intégrations → Search Console → "Déconnecter" → "Connecter" une dernière fois.',
       },
     ],
     notes: [

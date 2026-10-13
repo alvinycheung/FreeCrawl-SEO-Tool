@@ -386,6 +386,18 @@ export const ISSUE_CATEGORIES: readonly UrlCategory[] = ISSUE_GROUPS.flatMap((g)
 );
 
 /**
+ * Anchor texts the "Generic Anchor Text" check flags, lower-cased. One list
+ * for both sides: the HTML parser counts them over every `<a>` on a page,
+ * and the issue SQL matches them against stored link anchors.
+ */
+export const GENERIC_ANCHOR_TEXTS: readonly string[] = [
+  'click here', 'click', 'here', 'read more', 'more',
+  'learn more', 'see more', 'continue reading', 'continue',
+  'this link', 'link', 'go', 'buraya', 'tıkla', 'devamı',
+  'devamını oku', 'daha fazla',
+];
+
+/**
  * Normalises a saved `disabledIssues` list: drops unknown ids (a check
  * renamed since the project was saved) and duplicates, keeps sidebar order.
  */

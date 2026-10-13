@@ -302,4 +302,8 @@ export const MENU_EN: MenuLabels = {
   dlgConfirmClearDetail:
     'This permanently deletes every crawled URL, link, image, header and source snapshot in the active project. This cannot be undone.',
   dlgDontAskAgain: "Don't ask me again",
+
+  // ── Google OAuth refresh failure ──
+  oauthRefreshExpired:
+    'Google rejected the saved sign-in ({reason}). This usually means your Google Cloud OAuth app is in "Testing" status, where Google expires the connection every 7 days. Fix it once: Google Cloud Console → OAuth consent screen → "Publish app" (no verification review needed), then Disconnect and Connect this integration again.',
 };

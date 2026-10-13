@@ -301,4 +301,8 @@ export const MENU_KO: MenuLabels = {
   dlgConfirmClearDetail:
     '현재 프로젝트에서 크롤된 모든 URL, 링크, 이미지, 헤더, 소스 스냅샷이 영구적으로 삭제됩니다. 되돌릴 수 없습니다.',
   dlgDontAskAgain: '다시 묻지 않기',
+
+  // ── Google OAuth refresh failure ──
+  oauthRefreshExpired:
+    'Google이 저장된 로그인을 거부했습니다({reason}). 보통 Google Cloud OAuth 앱이 "Testing" 상태라는 뜻이며, 이 상태에서는 Google이 7일마다 연결을 만료시킵니다. 한 번만 고치세요: Google Cloud Console → OAuth consent screen → "Publish app"(검증 심사 불필요), 그다음 이 통합을 연결 해제 후 다시 연결하세요.',
 };

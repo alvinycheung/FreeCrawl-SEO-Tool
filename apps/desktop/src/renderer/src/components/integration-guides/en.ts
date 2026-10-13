@@ -538,7 +538,7 @@ export const GUIDES_EN: Record<string, Guide> = {
       {
         problem: 'Connection broke after 7 days',
         solution:
-          'OAuth refresh tokens expire every 7 days in testing mode. Settings → Integrations → Search Console → "Disconnect" → "Connect" to re-auth. To get rid of the expiry you need to push the app through Google\'s verification process (1-4 weeks).',
+          'Google expires OAuth refresh tokens after 7 days while the consent screen is in "Testing" publishing status. Permanent fix: Google Cloud Console → APIs & Services → OAuth consent screen → "Publish app" (status becomes "In production"). No verification review is needed — the "unverified app" warning stays, but tokens stop expiring. Then Settings → Integrations → Search Console → "Disconnect" → "Connect" one last time.',
       },
     ],
     notes: [

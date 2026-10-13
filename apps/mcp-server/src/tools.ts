@@ -104,17 +104,38 @@ function resolveUrlId(
   throw new Error('Tool requires either `id` (number) or `url` (string).');
 }
 
+/** One integration's per-project settings blob, as the desktop saves it
+ *  (`integrationSettings:<id>`), or `{}` when missing or corrupt. */
+function integrationSettings(db: ProjectDb, id: string): Record<string, unknown> {
+  try {
+    const raw = db.getMeta(`integrationSettings:${id}`);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The Google account whose GSC / GA4 rows this project reads — the one
+ * the desktop saved for it (account picker, `google_account_set`, every
+ * fetch). Rows are keyed by account since multi-account, so querying
+ * without it finds nothing. The linked-account list lives in the
+ * desktop's credential store, out of this process's reach, so a project
+ * with no saved choice falls back to the account of its latest pull.
+ */
+function savedGoogleAccount(db: ProjectDb, id: 'gsc' | 'ga4'): string {
+  const saved = integrationSettings(db, id)['accountId'];
+  if (typeof saved === 'string' && saved) return saved;
+  return db.latestGoogleAccountId(id === 'gsc' ? 'gsc_results' : 'ga4_results');
+}
+
 /** The Metrica counter last picked or fetched for this project (the desktop
  *  saves it on a pick in the Metrica tab and after a successful pull), or ''
  *  when there is none. */
 function savedMetricaCounter(db: ProjectDb): string {
-  try {
-    const raw = db.getMeta('integrationSettings:metrica');
-    const saved = raw ? (JSON.parse(raw) as { counterId?: unknown }) : null;
-    return typeof saved?.counterId === 'string' ? saved.counterId : '';
-  } catch {
-    return ''; // corrupt settings — no counter
-  }
+  const saved = integrationSettings(db, 'metrica')['counterId'];
+  return typeof saved === 'string' ? saved : '';
 }
 
 /** Sanity-cap a numeric param without falling back to undefined. */
@@ -611,7 +632,12 @@ export function buildTools(): Tool[] {
         const id = resolveUrlId(args, db);
         const row = db.getUrlRowById(id);
         if (!row) throw new Error(`URL id ${id} not found.`);
-        return db.getUrlAnalytics(row.url, '', '', savedMetricaCounter(db));
+        return db.getUrlAnalytics(
+          row.url,
+          savedGoogleAccount(db, 'gsc'),
+          savedGoogleAccount(db, 'ga4'),
+          savedMetricaCounter(db),
+        );
       },
     },
 
@@ -642,7 +668,7 @@ export function buildTools(): Tool[] {
     {
       name: 'query_gsc',
       description:
-        'Search Console rows: clicks, impressions, CTR, average position per crawled page. Returns null per-URL when the URL has not been pulled from GSC yet (configure the integration in Settings → Integrations → Search Console).',
+        'Search Console rows: clicks, impressions, CTR, average position per crawled page, from the Google account the project uses (switch with `google_account_set`). Returns null per-URL when the URL has not been pulled from GSC yet (configure the integration in Settings → Integrations → Search Console).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -656,19 +682,25 @@ export function buildTools(): Tool[] {
           offset: { type: 'integer', minimum: 0 },
         },
       },
-      handler: (args, db) =>
-        db.queryGsc({
+      handler: (args, db) => {
+        // Same URL-matching options the desktop's Search Console tab joins with.
+        const settings = integrationSettings(db, 'gsc');
+        return db.queryGsc({
           limit: clamp(args.limit, 1, 1000, 50),
           offset: clamp(args.offset, 0, 10_000_000, 0),
           search: typeof args.search === 'string' ? args.search : undefined,
           filter: args.filter as 'all' | 'with-data' | 'without-data' | undefined,
-        }),
+          accountId: savedGoogleAccount(db, 'gsc'),
+          matchSlash: typeof settings['matchSlash'] === 'boolean' ? settings['matchSlash'] : undefined,
+          matchCase: typeof settings['matchCase'] === 'boolean' ? settings['matchCase'] : undefined,
+        });
+      },
     },
 
     {
       name: 'query_ga4',
       description:
-        'GA4 rows: sessions, users, bounceRate, engagementRate per crawled page. Configure the integration in Settings → Integrations → GA4 to populate.',
+        'GA4 rows: sessions, users, bounceRate, engagementRate per crawled page, from the Google account the project uses (switch with `google_account_set`). Configure the integration in Settings → Integrations → GA4 to populate.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -687,6 +719,7 @@ export function buildTools(): Tool[] {
           offset: clamp(args.offset, 0, 10_000_000, 0),
           search: typeof args.search === 'string' ? args.search : undefined,
           filter: args.filter as 'all' | 'with-data' | 'without-data' | undefined,
+          accountId: savedGoogleAccount(db, 'ga4'),
         }),
     },
 
@@ -1173,8 +1206,8 @@ export function buildTools(): Tool[] {
       handler: (args, db) => ({
         rows: db.orphanPagesCrossSource(
           clamp(args.limit, 1, 10_000, 1000),
-          '',
-          '',
+          savedGoogleAccount(db, 'gsc'),
+          savedGoogleAccount(db, 'ga4'),
           savedMetricaCounter(db),
         ),
       }),
