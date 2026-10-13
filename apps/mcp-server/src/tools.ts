@@ -104,6 +104,19 @@ function resolveUrlId(
   throw new Error('Tool requires either `id` (number) or `url` (string).');
 }
 
+/** The Metrica counter last picked or fetched for this project (the desktop
+ *  saves it on a pick in the Metrica tab and after a successful pull), or ''
+ *  when there is none. */
+function savedMetricaCounter(db: ProjectDb): string {
+  try {
+    const raw = db.getMeta('integrationSettings:metrica');
+    const saved = raw ? (JSON.parse(raw) as { counterId?: unknown }) : null;
+    return typeof saved?.counterId === 'string' ? saved.counterId : '';
+  } catch {
+    return ''; // corrupt settings — no counter
+  }
+}
+
 /** Sanity-cap a numeric param without falling back to undefined. */
 function clamp(n: unknown, min: number, max: number, fallback: number): number {
   const v = typeof n === 'number' && Number.isFinite(n) ? n : fallback;
@@ -586,7 +599,7 @@ export function buildTools(): Tool[] {
     {
       name: 'get_url_analytics',
       description:
-        'GSC + GA4 + PageSpeed + AI roll-up for one URL: clicks/impressions/CTR/position (GSC), sessions/users/bounceRate (GA4), lab scores + Core Web Vitals (PageSpeed), provider-specific AI verdict. Returns null fields for integrations that have not been fetched yet.',
+        'GSC + GA4 + Yandex Metrica + URL Inspection roll-up for one URL: clicks/impressions/CTR/position (GSC), sessions/users/pageviews/engagement (GA4), pageviews (hit-level) and visits/users/searchVisits (session-level, sessions that started on this page) from the Metrica counter last picked or fetched for this project, and the GSC URL Inspection verdict. Returns null fields for integrations that have not been fetched yet.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -598,7 +611,7 @@ export function buildTools(): Tool[] {
         const id = resolveUrlId(args, db);
         const row = db.getUrlRowById(id);
         if (!row) throw new Error(`URL id ${id} not found.`);
-        return db.getUrlAnalytics(row.url);
+        return db.getUrlAnalytics(row.url, '', '', savedMetricaCounter(db));
       },
     },
 
@@ -675,6 +688,62 @@ export function buildTools(): Tool[] {
           search: typeof args.search === 'string' ? args.search : undefined,
           filter: args.filter as 'all' | 'with-data' | 'without-data' | undefined,
         }),
+    },
+
+    {
+      name: 'query_metrica',
+      description:
+        'Yandex Metrica rows per crawled HTML page: `pageviews` (hit-level, views of that URL) and `visits` / `users` / `searchVisits` (session-level, sessions that STARTED on that page; searchVisits = organic search). A page can have pageviews and zero visits. `users` is an upper bound: URL variants folded into one page are summed, and summing across pages over-counts. Returns `{rows, total, counterId, meta, notice}`; `meta` holds the pulled date range, whole-site totals and `truncated` / `sampled` flags. `without-data` and `indexable-no-visits` need a complete, unsampled pull — otherwise they return no rows and a `notice` code: "no-pull" (nothing fetched for this counter), "truncated" (the last pull hit the row cap) or "sampled". Populate with `metrica_fetch`.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          search: { type: 'string', description: 'Substring match on the URL.' },
+          filter: {
+            type: 'string',
+            enum: [
+              'all',
+              'with-data',
+              'without-data',
+              'indexable-no-visits',
+              'non200-with-traffic',
+            ],
+            description:
+              '`with-data` / `without-data` = 2xx pages with / without Metrica rows; `indexable-no-visits` = indexable 2xx pages that started no sessions; `non200-with-traffic` = non-2xx pages that still get pageviews or visits. Default "all" (2xx pages).',
+          },
+          counterId: {
+            type: 'string',
+            description: 'Metrica counter ID. Omitted = the counter last picked or fetched for this project.',
+          },
+          limit: { type: 'integer', minimum: 1, maximum: 1000 },
+          offset: { type: 'integer', minimum: 0 },
+        },
+      },
+      handler: (args, db) => {
+        const counterId =
+          (typeof args.counterId === 'string' ? args.counterId.trim() : '') ||
+          savedMetricaCounter(db);
+        const result = db.queryMetrica({
+          limit: clamp(args.limit, 1, 1000, 50),
+          offset: clamp(args.offset, 0, 10_000_000, 0),
+          search: typeof args.search === 'string' ? args.search : undefined,
+          filter: args.filter as
+            | 'all'
+            | 'with-data'
+            | 'without-data'
+            | 'indexable-no-visits'
+            | 'non200-with-traffic'
+            | undefined,
+          counterId,
+        });
+        let meta: unknown = null;
+        try {
+          const raw = counterId ? db.getMeta(`metricaFetchMeta:${counterId}`) : null;
+          if (raw) meta = JSON.parse(raw);
+        } catch {
+          /* no / corrupt meta */
+        }
+        return { ...result, counterId: counterId || null, meta };
+      },
     },
 
     {
@@ -1096,13 +1165,18 @@ export function buildTools(): Tool[] {
     {
       name: 'report_orphan_cross_source',
       description:
-        'Orphan pages across all truth sources: URLs present in the XML sitemap, Google Search Console, or Google Analytics 4 but never reached by the crawl (or crawled only as an unfetched stub). Each row lists which sources mentioned it plus its GSC clicks / impressions and GA4 sessions; sorted by traffic (GSC clicks + GA4 sessions) descending so high-value orphans surface first. Sitemap-only with no traffic is often a dead entry; GSC/GA4 orphans are real pages users reach that no internal link path does.',
+        'Orphan pages across all truth sources: URLs present in the XML sitemap, Google Search Console, Google Analytics 4 or Yandex Metrica (the counter last picked or fetched for this project) but never reached by the crawl (or crawled only as an unfetched stub). Each row lists which sources mentioned it plus its GSC clicks / impressions, GA4 sessions and Metrica pageviews (hit-level) / visits (landing page); sorted by traffic (GSC clicks + the larger of GA4 sessions and Metrica visits, then Metrica pageviews) descending so high-value orphans surface first. Sitemap-only with no traffic is often a dead entry; GSC/GA4/Metrica orphans are real pages users reach that no internal link path does.',
       inputSchema: {
         type: 'object',
         properties: { limit: { type: 'integer', minimum: 1, maximum: 10_000 } },
       },
       handler: (args, db) => ({
-        rows: db.orphanPagesCrossSource(clamp(args.limit, 1, 10_000, 1000)),
+        rows: db.orphanPagesCrossSource(
+          clamp(args.limit, 1, 10_000, 1000),
+          '',
+          '',
+          savedMetricaCounter(db),
+        ),
       }),
     },
     {
@@ -1857,6 +1931,49 @@ export function buildTools(): Tool[] {
         }>('POST', '/v1/action/ga4-fetch', args),
     },
 
+    {
+      requiresDb: false,
+      name: 'metrica_list_counters',
+      description:
+        'List every Yandex Metrica counter the saved token can read. Returns `{ok, error, counters: [{counterId, name, site, ownerLogin}]}`. Pass the matching `counterId` to `metrica_fetch` next. Needs a token in Settings → Integrations → Yandex Metrica.',
+      inputSchema: { type: 'object', properties: {} },
+      handler: async () => bridgeRequest<unknown>('POST', '/v1/action/metrica-list-counters', {}),
+    },
+
+    {
+      requiresDb: false,
+      name: 'metrica_fetch',
+      description:
+        'Pull unsampled per-page Yandex Metrica data for one counter over the last N full days, ending yesterday (counter time zone): pageviews by page URL, visits / users / search-engine visits by landing page. Replaces the stored rows for that counter; query them via `query_metrica`. Returns immediately — it does NOT block (a pull takes under a minute on most sites, several minutes with throttling retries). Poll `get_fetch_progress` (kind "metrica") until `running` is false, then check its `error` / `cancelled`; `cancel_fetch` stops it and keeps the stored rows. Returns `{started, state}`; `started:false` + `reason` when the input or token is rejected or a pull is already running.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          counterId: {
+            type: 'string',
+            description:
+              'Numeric Metrica counter ID. Get available values from `metrica_list_counters`.',
+          },
+          counterName: {
+            type: 'string',
+            description:
+              'Friendly label saved into the fetch meta for the UI. Optional — falls back to `counterId`.',
+          },
+          days: {
+            type: 'integer',
+            enum: [7, 28, 90],
+            description: 'Trailing window length in days. Default 28.',
+          },
+        },
+        required: ['counterId'],
+      },
+      handler: async (args) =>
+        bridgeRequest<{
+          started: boolean;
+          reason?: string | null;
+          state: unknown;
+        }>('POST', '/v1/action/metrica-fetch', args),
+    },
+
     // ---- Faz 0.5 Increment 5 — slow batch-fetch run triggers
     // (PageSpeed / AI / SEO). These are the multi-URL fetchers that
     // stream progress + support cancellation. The MCP wire protocol
@@ -2058,13 +2175,13 @@ export function buildTools(): Tool[] {
       requiresDb: false,
       name: 'get_fetch_progress',
       description:
-        'Poll the live state of the PageSpeed / AI / SEO batch fetchers started by pagespeed_run / ai_run / seo_run (or by the desktop UI — the snapshot is shared). Returns per-kind `{running, done, total, completed, failed, currentUrl, cancelled, startedAt, finishedAt, provider, error}`. Omit `kind` for all three; pass one to narrow. Poll every 1–2 s; once `running` flips to false the batch is done. This is the fetch-side analogue of get_crawl_progress.',
+        'Poll the live state of the PageSpeed / CrUX / spelling / AI / SEO batch fetchers and the Yandex Metrica pull, started by pagespeed_run / crux_run / spelling_run / ai_run / seo_run / metrica_fetch (or by the desktop UI — the snapshot is shared). For "metrica", done/total count its three reports and `detail` names the current one with its rows so far. Returns per-kind `{running, done, total, completed, failed, currentUrl, cancelled, startedAt, finishedAt, provider, error, detail}`. Omit `kind` for all; pass one to narrow. Poll every 1–2 s; once `running` flips to false the batch is done. This is the fetch-side analogue of get_crawl_progress.',
       inputSchema: {
         type: 'object',
         properties: {
           kind: {
             type: 'string',
-            enum: ['pagespeed', 'crux', 'spelling', 'ai', 'seo'],
+            enum: ['pagespeed', 'crux', 'spelling', 'ai', 'seo', 'metrica'],
           },
         },
       },
@@ -2076,13 +2193,13 @@ export function buildTools(): Tool[] {
       requiresDb: false,
       name: 'cancel_fetch',
       description:
-        'Request cooperative cancellation of a running batch fetcher. In-flight items finish and are saved; queued items are skipped. Pass `kind` ("pagespeed" / "ai" / "seo") to cancel one, or omit to cancel all three. Returns which kinds were running when the cancel landed. No-op for kinds that are idle.',
+        'Request cooperative cancellation of a running batch fetcher. In-flight items finish and are saved; queued items are skipped. Pass `kind` ("pagespeed" / "crux" / "spelling" / "ai" / "seo" / "metrica") to cancel one, or omit to cancel all. A Metrica pull is aborted at once, even mid-retry, and nothing is stored, unless the rows were already being written. Returns which kinds were running when the cancel landed. No-op for kinds that are idle.',
       inputSchema: {
         type: 'object',
         properties: {
           kind: {
             type: 'string',
-            enum: ['pagespeed', 'crux', 'spelling', 'ai', 'seo'],
+            enum: ['pagespeed', 'crux', 'spelling', 'ai', 'seo', 'metrica'],
           },
         },
       },

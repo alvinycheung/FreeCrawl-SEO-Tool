@@ -25,6 +25,7 @@ export type ExportDatasetKey =
   | 'spelling'
   | 'search-console'
   | 'analytics'
+  | 'metrica'
   | `ai:${AiProvider}`
   | `seo:${SeoProvider}`;
 
@@ -154,6 +155,17 @@ export const EXPORT_DATASET_COLUMNS: Record<ExportDatasetKey, ExportDatasetColum
     { key: 'ga4.engagementRate', header: 'Engagement Rate' },
     { key: 'ga4.avgSessionDuration', header: 'Avg. Session Duration' },
     { key: 'ga4.fetchedAt', header: 'Fetched At' },
+  ],
+  // Pageviews are hit-level (page URL); the rest are session-level,
+  // counted for the landing page. The headers say so.
+  metrica: [
+    ...PAGE,
+    { key: 'indexability', header: 'Indexability' },
+    { key: 'metrica.pageviews', header: 'Pageviews (hits)' },
+    { key: 'metrica.visits', header: 'Visits (landing page)' },
+    { key: 'metrica.users', header: 'Users (landing page)' },
+    { key: 'metrica.searchVisits', header: 'Search Visits (landing page)' },
+    { key: 'metrica.fetchedAt', header: 'Fetched At' },
   ],
   'ai:openai': AI,
   'ai:anthropic': AI,

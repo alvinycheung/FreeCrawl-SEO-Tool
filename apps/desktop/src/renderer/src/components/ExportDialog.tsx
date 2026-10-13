@@ -128,6 +128,7 @@ const DATASET_TABS: Partial<Record<TabKey, DatasetTab>> = {
   spelling: { dataset: 'spelling' },
   'search-console': { dataset: 'search-console' },
   analytics: { dataset: 'analytics' },
+  metrica: { dataset: 'metrica' },
   ai: {
     subdir: 'ai',
     providers: [
@@ -196,6 +197,7 @@ const TAB_CATEGORY: Partial<Record<TabKey, UrlCategory>> = {
   pagespeed: 'all',
   'search-console': 'all',
   analytics: 'all',
+  metrica: 'all',
   ai: 'all',
   seo: 'all',
 };

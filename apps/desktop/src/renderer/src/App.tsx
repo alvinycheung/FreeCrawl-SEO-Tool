@@ -24,6 +24,7 @@ import { CruxTab } from './tabs/CruxTab.js';
 import { SpellingTab } from './tabs/SpellingTab.js';
 import { SearchConsoleTab } from './tabs/SearchConsoleTab.js';
 import { AnalyticsTab } from './tabs/AnalyticsTab.js';
+import { MetricaTab } from './tabs/MetricaTab.js';
 import { AiTab } from './tabs/AiTab.js';
 import { SeoTab } from './tabs/SeoTab.js';
 import { AssistantTab } from './tabs/AssistantTab.js';
@@ -563,6 +564,8 @@ export function App() {
                   <SearchConsoleTab />
                 ) : activeTab === 'analytics' ? (
                   <AnalyticsTab />
+                ) : activeTab === 'metrica' ? (
+                  <MetricaTab />
                 ) : activeTab === 'ai' ? (
                   <AiTab />
                 ) : activeTab === 'seo' ? (

@@ -915,20 +915,20 @@ function AnalyticsView({
     );
   }
 
-  if (!data || (!data.gsc && !data.ga4 && !data.inspection)) {
+  if (!data || (!data.gsc && !data.ga4 && !data.metrica && !data.inspection)) {
     return (
       <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-surface-500">
         {t('analyticsView.empty', {
           defaultValue:
-            'No Search Console / Analytics 4 / URL Inspection data for this URL yet. Fetch it from the GA4 / Search Console tabs.',
+            'No Search Console / Analytics 4 / Yandex Metrica / URL Inspection data for this URL yet. Fetch it from the GA4 / Yandex Metrica / Search Console tabs.',
         })}
       </div>
     );
   }
 
-  const { gsc, ga4, inspection } = data;
-  // The cards are three unrelated metric sets; exporting them as one
-  // metric/value sheet keeps a single file per URL rather than three.
+  const { gsc, ga4, metrica, inspection } = data;
+  // The cards are unrelated metric sets; exporting them as one
+  // metric/value sheet keeps a single file per URL rather than one each.
   const exportRows = (): (string | number | boolean | null)[][] => {
     const out: (string | number | boolean | null)[][] = [];
     if (gsc) {
@@ -951,6 +951,12 @@ function AnalyticsView({
         'Avg session duration',
         Math.round(ga4.avgSessionDuration),
       ]);
+    }
+    if (metrica) {
+      out.push(['Yandex Metrica', 'Pageviews (hits)', metrica.pageviews]);
+      out.push(['Yandex Metrica', 'Visits (landing)', metrica.visits]);
+      out.push(['Yandex Metrica', 'Users (landing)', metrica.users]);
+      out.push(['Yandex Metrica', 'Search visits (landing)', metrica.searchVisits]);
     }
     if (inspection) {
       out.push(['URL Inspection', 'Verdict', inspection.verdict ?? '']);
@@ -976,7 +982,7 @@ function AnalyticsView({
           rows: exportRows(),
         })}
       />
-    <div className="grid grid-cols-1 gap-3 overflow-y-auto p-3 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 overflow-y-auto p-3 lg:grid-cols-2 xl:grid-cols-4">
       <AnalyticsCard
         title={t('analyticsView.gscTitle', { defaultValue: 'Search Console' })}
         empty={t('analyticsView.gscEmpty', { defaultValue: 'No clicks / impressions data yet.' })}
@@ -1008,6 +1014,48 @@ function AnalyticsView({
             <AnalyticsRow
               label="Avg session duration"
               value={`${Math.round(ga4.avgSessionDuration)} s`}
+            />
+          </>
+        )}
+      </AnalyticsCard>
+      <AnalyticsCard
+        title={t('analyticsView.metricaTitle', { defaultValue: 'Yandex Metrica' })}
+        empty={t('analyticsView.metricaEmpty', {
+          defaultValue: 'No Yandex Metrica data yet — fetch it from the Yandex Metrica tab.',
+        })}
+        present={!!metrica}
+      >
+        {metrica && (
+          <>
+            <AnalyticsRow
+              label="Pageviews (hits)"
+              value={metrica.pageviews.toLocaleString()}
+              hint={t('analyticsView.metricaPageviewsHint', {
+                defaultValue: 'Hit-level: every view of this page URL.',
+              })}
+            />
+            <AnalyticsRow
+              label="Visits (landing)"
+              value={metrica.visits.toLocaleString()}
+              hint={t('analyticsView.metricaVisitsHint', {
+                defaultValue: 'Session-level: sessions that started on this page.',
+              })}
+            />
+            <AnalyticsRow
+              label="Users (landing)"
+              value={metrica.users.toLocaleString()}
+              hint={t('analyticsView.metricaUsersHint', {
+                defaultValue:
+                  'Session-level, by landing page. An upper bound when several URL variants fold into this page.',
+              })}
+            />
+            <AnalyticsRow
+              label="Search visits (landing)"
+              value={metrica.searchVisits.toLocaleString()}
+              hint={t('analyticsView.metricaSearchVisitsHint', {
+                defaultValue:
+                  'Session-level: sessions from search engines that started on this page.',
+              })}
             />
           </>
         )}
@@ -1070,11 +1118,22 @@ function AnalyticsCard({
   );
 }
 
-function AnalyticsRow({ label, value }: { label: string; value: string }) {
+function AnalyticsRow({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  /** Tooltip on the label, e.g. which level a metric is counted at. */
+  hint?: string;
+}) {
   const { i18n } = useTranslation();
   return (
     <div className="flex items-baseline gap-3 text-[11px]">
-      <div className="w-32 shrink-0 text-surface-500">{translateLabel(label, i18n.language)}</div>
+      <div className="w-32 shrink-0 text-surface-500" title={hint}>
+        {translateLabel(label, i18n.language)}
+      </div>
       <div className="min-w-0 flex-1 truncate text-surface-100" title={value}>
         {value}
       </div>

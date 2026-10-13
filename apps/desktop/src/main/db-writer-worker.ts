@@ -140,6 +140,7 @@ const ALLOWED_METHODS = new Set<string>([
   'deleteUrls',
   'reset',
   'deleteByDomain',
+  'replaceMetricaResults',
 ]);
 
 parentPort.on('message', async (msg: RequestMessage) => {

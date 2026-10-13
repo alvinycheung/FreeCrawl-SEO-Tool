@@ -610,6 +610,81 @@ export const GUIDES_KO: Record<string, Guide> = {
     ],
     lastReviewed: '2026-06-01',
   },
+  metrica: {
+    intro:
+      '샘플링되지 않은 URL별 Yandex Metrica 데이터를 가져옵니다: 페이지뷰(히트 수준, 페이지 URL별)와 방문수, 사용자수, 검색엔진 방문수(세션 수준, 랜딩 페이지별). 작은 Yandex OAuth 앱과 읽기 전용 토큰을 직접 만들기 때문에 API 할당량은 본인의 Yandex 계정에만 집계됩니다.',
+    prereqs: [
+      'Metrica 카운터를 볼 수 있는 Yandex 계정 — 카운터 소유자이거나, 소유자가 최소 보기 권한을 부여한 사용자(Metrica → Settings → Access).',
+      '약 5분. 결제나 앱 심사가 필요 없습니다.',
+    ],
+    steps: [
+      {
+        title: 'Yandex OAuth 앱 등록 페이지 열기',
+        detail:
+          '카운터를 볼 수 있는 Yandex 계정으로 로그인하세요. 여러 Yandex 계정에 로그인되어 있다면 먼저 올바른 계정으로 전환하세요 — 토큰은 5단계에서 승인한 계정에 속합니다.',
+        link: { label: 'oauth.yandex.com', url: 'https://oauth.yandex.com/client/new' },
+      },
+      {
+        title: '앱 유형 "For API access or debugging" 선택',
+        detail:
+          '앱을 만든 뒤에는 유형을 바꿀 수 없습니다. 그런 다음 다음 항목을 입력하세요:\n• 이름: "FreeCrawl"(알아볼 수 있는 아무 이름)\n• 연락처 이메일: 본인 이메일 주소',
+      },
+      {
+        title: 'metrika:read 권한 추가',
+        detail:
+          '데이터 액세스 섹션에서 Yandex Metrica를 검색하고 코드가 metrika:read인 권한(통계 및 카운터 매개변수 읽기)만 체크하세요. FreeCrawl은 Metrica에 아무것도 쓰지 않으므로 metrika:write와 다른 권한은 체크하지 마세요.\n\n카운터가 조직(Yandex 360 for Business) 계정에 속해 있다면 passport:business도 추가하세요.',
+      },
+      {
+        title: '앱을 만들고 ClientID 복사',
+        detail:
+          '저장하면 앱 페이지에 ClientID(32자리 16진수 문자열)가 표시됩니다. 클라이언트 비밀 값(client secret)은 필요 없습니다.',
+      },
+      {
+        title: '승인 링크를 열어 토큰 받기',
+        detail:
+          '같은 브라우저에서 <ClientID> 자리에 본인의 ClientID를 넣어 다음 주소를 여세요:\n\nhttps://oauth.yandex.com/authorize?response_type=token&client_id=<ClientID>\n\n액세스 요청을 승인하세요. 그러면 Yandex가 페이지에 토큰을 표시합니다 — 복사하세요.',
+      },
+      {
+        title: 'FreeCrawl에 토큰 붙여넣기',
+        detail:
+          '설정 → 연동 → Yandex Metrica → OAuth token → 저장. 토큰은 이 컴퓨터에만 보관되며 Metrica API로만 전송됩니다. 운영체제 키체인을 사용할 수 있으면 키체인으로 암호화되고, 키링이 없는 Linux에서는 본인 사용자만 읽을 수 있는 파일에 암호화되지 않은 상태로 저장됩니다.',
+      },
+      {
+        title: '카운터 나열, 하나 선택 후 가져오기',
+        detail:
+          '크롤한 사이트의 카운터를 선택하고 기간(어제로 끝나는 최근 7일, 28일 또는 90일의 전체 일수)을 고른 뒤 가져오세요. 큰 사이트는 몇 분 걸립니다: Metrica는 최대 100,000개 URL로 된 각 페이지에 15–30초 안에 응답합니다.',
+      },
+    ],
+    troubleshooting: [
+      {
+        problem: '"Yandex Metrica rejected the token" (HTTP 401)',
+        solution:
+          '토큰이 만료되었거나 취소되었거나 일부만 복사되었습니다. 5단계의 승인 링크를 다시 열고 새 토큰을 붙여넣으세요.',
+      },
+      {
+        problem: '"Yandex Metrica denied access" (HTTP 403)',
+        solution:
+          '토큰을 승인한 계정이 이 카운터를 볼 수 없거나, 앱에 metrika:read 권한이 없습니다. Metrica에서 카운터의 액세스 목록을 확인하거나, oauth.yandex.com에서 앱을 편집해 metrika:read를 추가한 뒤 새 토큰을 받으세요.',
+      },
+      {
+        problem: 'The counter list is empty or the counter is missing',
+        solution:
+          '토큰이 다른 Yandex 계정에 속해 있습니다. 올바른 계정으로 로그인하고 승인 링크를 다시 열어 토큰을 교체하세요.',
+      },
+      {
+        problem: '"Query is too complicated" or throttling errors',
+        solution:
+          'FreeCrawl은 점점 길어지는 간격을 두고 자동으로 재시도합니다. 그래도 가져오기가 실패하면 나중에 다시 시도하거나 더 짧은 기간을 사용하세요.',
+      },
+    ],
+    notes: [
+      '페이지뷰는 URL의 모든 조회를 집계하고, 방문수·사용자수·검색엔진 방문수는 세션이 시작된 페이지를 기준으로 세션을 집계합니다. 한 페이지에 페이지뷰는 많아도 방문수는 0일 수 있습니다.',
+      '페이지별 사용자수를 합산하면 과다 집계됩니다: 한 사람이 여러 페이지로 유입될 수 있습니다.',
+      'Metrica API 한도는 Yandex 계정별로 적용됩니다: 5분당 요청 200개, 동시 3개, 하루 5,000개. 한 번 가져올 때 URL 100,000개당 요청 몇 개만 사용합니다.',
+      'Yandex ID 계정(id.yandex.com)에서 데이터 액세스 권한이 있는 앱 목록을 통해 언제든지 토큰을 취소할 수 있습니다.',
+    ],
+    lastReviewed: '2026-10-11',
+  },
   sheets: {
     intro:
       '크롤링 결과를 Google 스프레드시트로 바로 내보냅니다. 팀원과 공유 실시간 문서로 협업할 때 "CSV 다운로드 → Excel에서 열기"보다 낫습니다.',

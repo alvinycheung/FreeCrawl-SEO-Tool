@@ -18,6 +18,8 @@ export interface DatasetExportContext {
   gscAccountId?: string;
   /** Linked Google account whose GA4 pull to export. */
   ga4AccountId?: string;
+  /** Yandex Metrica counter whose pull to export. */
+  metricaCounterId?: string;
   /** Search Console URL-matching options (Settings → Integrations → GSC). */
   gscMatchSlash?: boolean;
   gscMatchCase?: boolean;
@@ -27,13 +29,14 @@ const PAGE_SIZE = 2000;
 
 function* paged<T>(
   fetchPage: (limit: number, offset: number) => { rows: T[] },
+  pageSize = PAGE_SIZE,
 ): Generator<T> {
   let offset = 0;
   for (;;) {
-    const { rows } = fetchPage(PAGE_SIZE, offset);
+    const { rows } = fetchPage(pageSize, offset);
     for (const row of rows) yield row;
-    if (rows.length < PAGE_SIZE) return;
-    offset += PAGE_SIZE;
+    if (rows.length < pageSize) return;
+    offset += pageSize;
   }
 }
 
@@ -72,6 +75,15 @@ export function datasetRows(
     case 'analytics':
       return asRecords(
         paged((limit, offset) => db.queryGa4({ limit, offset, accountId: ctx.ga4AccountId })),
+      );
+    case 'metrica':
+      // queryMetrica caps a page at 1000 rows; a larger page would read as
+      // the last one.
+      return asRecords(
+        paged(
+          (limit, offset) => db.queryMetrica({ limit, offset, counterId: ctx.metricaCounterId }),
+          1000,
+        ),
       );
     default: {
       // Provider-keyed datasets: `ai:<provider>` / `seo:<provider>`.

@@ -250,12 +250,12 @@ FreeCrawl ships an **MCP (Model Context Protocol) server** that exposes the acti
 | :--- | :--- |
 | 📊 **Top-level data** | `get_summary`, `get_overview_counts`, `top_issues`, `query_urls`, `get_url_detail` |
 | 🔬 **Per-URL detail sub-tabs** | `get_url_source` (raw + rendered + screenshot paths), `get_url_inlinks`, `get_url_outlinks`, `get_url_images`, `get_url_headers`, `get_url_duplicates`, `get_url_analytics`, `get_url_cert` |
-| 🧩 **Integration rows** | `query_gsc`, `query_ga4`, `query_pagespeed`, `query_crux`, `query_spelling`, `get_url_spelling`, `query_ai`, `query_seo` |
+| 🧩 **Integration rows** | `query_gsc`, `query_ga4`, `query_metrica`, `query_pagespeed`, `query_crux`, `query_spelling`, `get_url_spelling`, `query_ai`, `query_seo` |
 | 🔎 **Specialised queries** | `query_images`, `query_broken_links`, `list_duplicate_clusters` |
 | 📈 **Reports** | `report_status_code_histogram`, `report_indexability_distribution`, `report_content_kind_distribution`, `report_depth_histogram`, `report_response_time_histogram`, `report_inlinks_histogram`, `report_word_count_histogram`, `report_url_length_histogram`, `report_top_urls_by`, `report_top_anchor_texts`, `report_external_domain_health`, `report_image_weight_per_page`, `report_link_position_breakdown`, `report_pages_per_directory`, `report_word_count_per_directory`, `report_sitemap_orphans`, `report_orphan_cross_source`, `report_analytics_coverage`, `report_server_header_breakdown`, `report_query_string_variants`, `report_sitemap_priority_mismatch`, `report_top_words` |
 | 📤 **Exports & mutations** | `export_csv`, `export_json`, `export_xml`, `export_html_report`, `export_tabular`, `export_bulk`, `export_broken_links`, `export_images`, `sitemap_generate`, `sitemap_validate`, `robots_test`, `robots_validate`, `compare_load`, `crawl_add_url`, `respider_urls`, `remove_urls`, `data_delete_by_domain`, `graph_snapshot`, `get_crawl_path`, `url_rewrite_preview`, `extraction_preview` |
 | 🔐 **Project files** | `project_save_as`, `project_save_encrypted`, `project_open_encrypted` |
-| 🔌 **Integration fetch** | `google_auth_status`, `gsc_list_sites`, `gsc_fetch`, `ga4_list_properties`, `ga4_fetch`, `pagespeed_run`, `crux_run`, `spelling_run`, `ai_run`, `seo_run`, `get_fetch_progress`, `cancel_fetch` |
+| 🔌 **Integration fetch** | `google_auth_status`, `gsc_list_sites`, `gsc_fetch`, `ga4_list_properties`, `ga4_fetch`, `metrica_list_counters`, `metrica_fetch`, `pagespeed_run`, `crux_run`, `spelling_run`, `ai_run`, `seo_run`, `get_fetch_progress`, `cancel_fetch` |
 | ⚙ **Config & schedule** | `get_crawl_config`, `set_crawl_config`, `schedule_get`, `schedule_set` |
 | 📁 **Project management** | `list_projects`, `set_project`, `current_project` |
 | 🕷 **Crawl control** (desktop must be open) | `start_crawl`, `stop_crawl`, `pause_crawl`, `resume_crawl`, `clear_crawl`, `get_crawl_progress`, `get_desktop_project` |

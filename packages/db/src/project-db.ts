@@ -32,6 +32,8 @@ import type {
   GscRow,
   GscPreset,
   Ga4Row,
+  MetricaRow,
+  MetricaNotice,
   AiProvider,
   AiResult,
   AiRow,
@@ -1176,6 +1178,7 @@ export class ProjectDb {
          DELETE FROM spelling_results;
          DELETE FROM gsc_results;
          DELETE FROM ga4_results;
+         DELETE FROM metrica_results;
          DELETE FROM ai_results;
          DELETE FROM seo_results;
          DELETE FROM gsc_inspection_results;`,
@@ -1724,6 +1727,7 @@ export class ProjectDb {
     'spelling_results',
     'gsc_results',
     'ga4_results',
+    'metrica_results',
     'ai_results',
     'seo_results',
     'gsc_inspection_results',
@@ -4994,13 +4998,15 @@ export class ProjectDb {
     return { total: totalRow.c, rows: rowsDb.map(mapRow) };
   }
 
-  /** Combined per-URL Analytics view for the detail panel. Three small
-   *  lookups (GSC Search Analytics + GA4 + GSC URL Inspection) keyed by
-   *  the URL string. Returns null when none of the three is present. */
+  /** Combined per-URL Analytics view for the detail panel. Four small
+   *  lookups (GSC Search Analytics + GA4 + Yandex Metrica + GSC URL
+   *  Inspection) keyed by the URL string. Returns null when none is
+   *  present. */
   getUrlAnalytics(
     url: string,
     gscAccountId = '',
     ga4AccountId = '',
+    metricaCounterId = '',
   ): UrlAnalyticsDetail | null {
     const g = this.db
       .prepare(
@@ -5032,6 +5038,20 @@ export class ProjectDb {
           fetched_at: string;
         }
       | undefined;
+    const m = this.db
+      .prepare(
+        `SELECT pageviews, visits, users, search_visits, fetched_at
+         FROM metrica_results WHERE url = ? AND account_id = ?`,
+      )
+      .get(url, metricaCounterId) as
+      | {
+          pageviews: number;
+          visits: number;
+          users: number;
+          search_visits: number;
+          fetched_at: string;
+        }
+      | undefined;
     const i = this.db
       .prepare(
         `SELECT verdict, coverage_state, robots_txt_state, indexing_state,
@@ -5057,7 +5077,7 @@ export class ProjectDb {
           fetched_at: string;
         }
       | undefined;
-    if (!g && !a && !i) return null;
+    if (!g && !a && !m && !i) return null;
     return {
       url,
       gsc: g
@@ -5077,6 +5097,15 @@ export class ProjectDb {
             engagementRate: a.engagement_rate ?? 0,
             avgSessionDuration: a.avg_session_duration ?? 0,
             fetchedAt: a.fetched_at,
+          }
+        : null,
+      metrica: m
+        ? {
+            pageviews: m.pageviews ?? 0,
+            visits: m.visits ?? 0,
+            users: m.users ?? 0,
+            searchVisits: m.search_visits ?? 0,
+            fetchedAt: m.fetched_at,
           }
         : null,
       inspection: i
@@ -5349,6 +5378,171 @@ export class ProjectDb {
           .run(...args);
       }
     });
+  }
+
+  /**
+   * Yandex Metrica — wholesale-replace the stored rows of one counter.
+   * Each pull is a snapshot for a date range, so the counter's old rows
+   * are dropped and the new set inserted in one transaction. `rows` must
+   * already be crawl-normalised (one row per `normalizeUrl` form).
+   */
+  replaceMetricaResults(
+    rows: {
+      url: string;
+      pageviews: number;
+      visits: number;
+      users: number;
+      searchVisits: number;
+    }[],
+    fetchedAt: string,
+    counterId: string,
+    /** Fetch meta JSON, written in the same transaction so rows and their
+     *  description can't disagree. */
+    metaJson?: string,
+  ): void {
+    this.runInTransaction(() => {
+      this.db.prepare('DELETE FROM metrica_results WHERE account_id = ?').run(counterId);
+      if (metaJson !== undefined) this.setMeta(`metricaFetchMeta:${counterId}`, metaJson);
+      const CHUNK = 400;
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const slice = rows.slice(i, i + CHUNK);
+        const placeholders = slice.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(',');
+        const args: (string | number)[] = [];
+        for (const r of slice) {
+          args.push(
+            r.url,
+            counterId,
+            r.pageviews,
+            r.visits,
+            r.users,
+            r.searchVisits,
+            fetchedAt,
+          );
+        }
+        this.db
+          .prepare(
+            `INSERT OR REPLACE INTO metrica_results
+               (url, account_id, pageviews, visits, users, search_visits, fetched_at)
+             VALUES ${placeholders}`,
+          )
+          .run(...args);
+      }
+    });
+  }
+
+  /**
+   * Yandex Metrica — candidate query for the Metrica tab. Crawled internal
+   * HTML pages left-joined with one counter's stored metrics, ordered by
+   * pageviews desc. The default view keeps to 2xx pages like the GA4 tab;
+   * `non200-with-traffic` deliberately looks at everything else.
+   *
+   * `without-data` and `indexable-no-visits` read a missing row as zero
+   * traffic, which only holds after a complete, unsampled pull. Without
+   * one they return nothing plus a `notice` code saying why.
+   */
+  queryMetrica(params: {
+    limit: number;
+    offset: number;
+    search?: string;
+    filter?:
+      | 'all'
+      | 'with-data'
+      | 'without-data'
+      | 'indexable-no-visits'
+      | 'non200-with-traffic';
+    counterId?: string;
+  }): { rows: MetricaRow[]; total: number; notice: MetricaNotice | null } {
+    const filter = params.filter ?? 'all';
+    const limit = Math.min(Math.max(Math.trunc(Number(params.limit)) || 0, 1), 1000);
+    const offset = Math.max(Math.trunc(Number(params.offset)) || 0, 0);
+    if (filter === 'without-data' || filter === 'indexable-no-visits') {
+      type PullFlags = { truncated?: unknown; sampled?: unknown };
+      let meta: PullFlags | null = null;
+      try {
+        const raw = params.counterId
+          ? this.getMeta(`metricaFetchMeta:${params.counterId}`)
+          : null;
+        meta = raw ? (JSON.parse(raw) as PullFlags) : null;
+      } catch {
+        meta = null;
+      }
+      const notice: MetricaNotice | null = !meta
+        ? 'no-pull'
+        : meta.truncated === true
+          ? 'truncated'
+          : meta.sampled === true
+            ? 'sampled'
+            : null;
+      if (notice) return { rows: [], total: 0, notice };
+    }
+    const where: string[] = ["u.is_external = 0 AND u.content_kind = 'html'"];
+    if (filter === 'non200-with-traffic') {
+      where.push('u.status_code IS NOT NULL');
+      where.push('(u.status_code < 200 OR u.status_code >= 300)');
+      where.push('(m.pageviews > 0 OR m.visits > 0)');
+    } else {
+      where.push('u.status_code >= 200 AND u.status_code < 300');
+    }
+    // The counter placeholder sits in the JOIN, ahead of the WHERE args.
+    const args: (string | number)[] = [params.counterId ?? ''];
+    if (params.search) {
+      where.push('u.url LIKE ?');
+      args.push(`%${params.search}%`);
+    }
+    if (filter === 'with-data') where.push('m.url IS NOT NULL');
+    else if (filter === 'without-data') where.push('m.url IS NULL');
+    else if (filter === 'indexable-no-visits') {
+      where.push("u.indexability = 'indexable'");
+      where.push('COALESCE(m.visits, 0) = 0');
+    }
+    const whereSql = `WHERE ${where.join(' AND ')}`;
+    const joinSql =
+      'FROM urls u LEFT JOIN metrica_results m ON m.url = u.url AND m.account_id = ?';
+
+    const totalRow = this.db
+      .prepare(`SELECT COUNT(*) AS c ${joinSql} ${whereSql}`)
+      .get(...args) as { c: number };
+
+    const rowsDb = this.db
+      .prepare(
+        `SELECT u.id AS id, u.url AS url, u.status_code AS status_code,
+                u.indexability AS indexability,
+                m.pageviews AS pageviews, m.visits AS visits,
+                m.users AS users, m.search_visits AS search_visits,
+                m.fetched_at AS fetched_at
+         ${joinSql}
+         ${whereSql}
+         ORDER BY m.pageviews DESC, u.url ASC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(...args, limit, offset) as unknown as Record<
+      string,
+      unknown
+    >[];
+
+    return {
+      total: totalRow.c,
+      rows: rowsDb.map((r) => {
+        const fetchedAt = r['fetched_at'];
+        return {
+          id: r['id'] as number,
+          url: r['url'] as string,
+          statusCode: (r['status_code'] as number | null) ?? null,
+          indexability: (r['indexability'] as string | null) ?? null,
+          metrica:
+            typeof fetchedAt === 'string'
+              ? {
+                  pageviews: (r['pageviews'] as number | null) ?? 0,
+                  visits: (r['visits'] as number | null) ?? 0,
+                  users: (r['users'] as number | null) ?? 0,
+                  searchVisits: (r['search_visits'] as number | null) ?? 0,
+                  fetchedAt,
+                }
+              : null,
+        };
+      }),
+      notice: null,
+    };
   }
 
   /**
@@ -9205,7 +9399,8 @@ export class ProjectDb {
 
   /**
    * Cross-source orphan URLs — pages that appear in any external truth
-   * source (XML sitemap, Search Console, or Analytics 4) but are *not*
+   * source (XML sitemap, Search Console, Analytics 4 or Yandex Metrica)
+   * but are *not*
    * in the crawled `urls` table, or are stubs with no fetched status.
    * Each row carries which sources mentioned the URL so the user can
    * triage why it was missed (sitemap-only = drop or fix internal
@@ -9215,12 +9410,15 @@ export class ProjectDb {
     limit = 1000,
     gscAccountId = '',
     ga4AccountId = '',
+    metricaCounterId = '',
   ): {
     url: string;
     sources: string[];
     gscClicks: number | null;
     gscImpressions: number | null;
     ga4Sessions: number | null;
+    metricaPageviews: number | null;
+    metricaVisits: number | null;
     lastmod: string | null;
   }[] {
     const cap = Math.max(1, Math.min(10_000, limit));
@@ -9228,40 +9426,72 @@ export class ProjectDb {
     // keeps these joins 1:1: `(url, account_id)` is the primary key of both
     // snapshot tables, so without the account predicate a URL reported by
     // two linked accounts would fan out into duplicated rows. The sitemap
-    // join is 1:1 on its own (url is UNIQUE there). Ordered by traffic (GSC
-    // clicks + GA4 sessions) descending so the highest-value orphans — real
-    // pages users reach that the crawl can't — float to the top.
+    // join is 1:1 on its own (url is UNIQUE there). Metrica is pinned to one
+    // counter the same way. Ordered by traffic (GSC clicks + sessions)
+    // descending so the highest-value orphans — real pages users reach that
+    // the crawl can't — float to the top. GA4 sessions and Metrica visits
+    // measure the same thing on sites with both, so the larger one counts;
+    // Metrica pageviews break ties for pages that are viewed but never land.
+    //
+    // A Metrica counter also reports pages on other hosts that carry it
+    // (syndication like dzen.ru, translate proxies, staging). Those are not
+    // pages the crawl could have found, so Metrica only contributes URLs on
+    // hosts the crawl has internal pages on.
+    const hostOf = (col: string): string => {
+      const rest = `substr(${col}, instr(${col}, '://') + 3)`;
+      return `CASE WHEN instr(${rest}, '/') > 0 THEN substr(${rest}, 1, instr(${rest}, '/') - 1) ELSE ${rest} END`;
+    };
     const rows = this.db
       .prepare(
-        `WITH src AS (
+        `WITH crawl_hosts AS (
+           SELECT DISTINCT ${hostOf('url')} AS host FROM urls WHERE is_external = 0
+         ),
+         src AS (
            SELECT url, 'sitemap' AS source FROM sitemap_urls
            UNION ALL
            SELECT url, 'gsc' AS source FROM gsc_results WHERE account_id = ?
            UNION ALL
            SELECT url, 'ga4' AS source FROM ga4_results WHERE account_id = ?
+           UNION ALL
+           SELECT url, 'metrica' AS source FROM metrica_results
+            WHERE account_id = ? AND ${hostOf('url')} IN (SELECT host FROM crawl_hosts)
          )
          SELECT s.url AS url,
                 GROUP_CONCAT(DISTINCT s.source) AS sources,
                 g.clicks AS gscClicks,
                 g.impressions AS gscImpressions,
                 a.sessions AS ga4Sessions,
+                m.pageviews AS metricaPageviews,
+                m.visits AS metricaVisits,
                 sm.lastmod AS lastmod
            FROM src s
            LEFT JOIN urls u ON u.url = s.url
            LEFT JOIN gsc_results g ON g.url = s.url AND g.account_id = ?
            LEFT JOIN ga4_results a ON a.url = s.url AND a.account_id = ?
+           LEFT JOIN metrica_results m ON m.url = s.url AND m.account_id = ?
            LEFT JOIN sitemap_urls sm ON sm.url = s.url
           WHERE u.url IS NULL OR u.status_code IS NULL
           GROUP BY s.url
-          ORDER BY (COALESCE(g.clicks, 0) + COALESCE(a.sessions, 0)) DESC, s.url
+          ORDER BY (COALESCE(g.clicks, 0) + MAX(COALESCE(a.sessions, 0), COALESCE(m.visits, 0))) DESC,
+                   COALESCE(m.pageviews, 0) DESC, s.url
           LIMIT ?`,
       )
-      .all(gscAccountId, ga4AccountId, gscAccountId, ga4AccountId, cap) as {
+      .all(
+        gscAccountId,
+        ga4AccountId,
+        metricaCounterId,
+        gscAccountId,
+        ga4AccountId,
+        metricaCounterId,
+        cap,
+      ) as {
       url: string;
       sources: string;
       gscClicks: number | null;
       gscImpressions: number | null;
       ga4Sessions: number | null;
+      metricaPageviews: number | null;
+      metricaVisits: number | null;
       lastmod: string | null;
     }[];
     return rows.map((r) => ({
@@ -9270,6 +9500,8 @@ export class ProjectDb {
       gscClicks: r.gscClicks ?? null,
       gscImpressions: r.gscImpressions ?? null,
       ga4Sessions: r.ga4Sessions ?? null,
+      metricaPageviews: r.metricaPageviews ?? null,
+      metricaVisits: r.metricaVisits ?? null,
       lastmod: r.lastmod ?? null,
     }));
   }

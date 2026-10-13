@@ -616,6 +616,81 @@ export const GUIDES_EN: Record<string, Guide> = {
     ],
     lastReviewed: '2026-06-01',
   },
+  metrica: {
+    intro:
+      'Pull unsampled per-URL Yandex Metrica data: pageviews (hit-level, per page URL) and visits, users and search-engine visits (session-level, per landing page). You create your own small Yandex OAuth app and a read-only token, so API quotas count against your own Yandex account only.',
+    prereqs: [
+      'A Yandex account that can view the Metrica counter — its owner, or a user the owner granted at least view access (Metrica → Settings → Access).',
+      'About 5 minutes. No payment or app review is needed.',
+    ],
+    steps: [
+      {
+        title: 'Open the Yandex OAuth app registration page',
+        detail:
+          'Sign in with the Yandex account that can view the counter. If you are signed in to several Yandex accounts, switch to the right one first — the token belongs to whichever account approves it in step 5.',
+        link: { label: 'oauth.yandex.com', url: 'https://oauth.yandex.com/client/new' },
+      },
+      {
+        title: 'Choose the app type "For API access or debugging"',
+        detail:
+          'The type cannot be changed after the app is created. Then fill in:\n• Name: "FreeCrawl" (any label you will recognise)\n• Contact email: your address',
+      },
+      {
+        title: 'Add the metrika:read permission',
+        detail:
+          'In the data access section, search for Yandex Metrica and tick only the permission with the code metrika:read (reading statistics and counter parameters). FreeCrawl never writes to Metrica, so leave metrika:write and the other permissions unticked.\n\nIf the counter belongs to an organisation (Yandex 360 for Business) account, also add passport:business.',
+      },
+      {
+        title: 'Create the app and copy its ClientID',
+        detail:
+          'After saving, the app page shows the ClientID (a 32-character hex string). You do not need the client secret.',
+      },
+      {
+        title: 'Open the authorize link to get the token',
+        detail:
+          'In the same browser, open this address with your ClientID in place of <ClientID>:\n\nhttps://oauth.yandex.com/authorize?response_type=token&client_id=<ClientID>\n\nApprove the access request. Yandex then shows the token on the page — copy it.',
+      },
+      {
+        title: 'Paste the token in FreeCrawl',
+        detail:
+          'Settings → Integrations → Yandex Metrica → OAuth token → Save. The token stays on this computer and is sent only to the Metrica API. It is encrypted with the operating system keychain when one is available; on Linux without a keyring it is stored unencrypted in a file only your user can read.',
+      },
+      {
+        title: 'List counters, pick one and fetch',
+        detail:
+          'Pick the counter for the crawled site, choose a window (the last 7, 28 or 90 full days, ending yesterday) and fetch. A large site takes a few minutes: Metrica answers each page of up to 100,000 URLs in 15–30 s.',
+      },
+    ],
+    troubleshooting: [
+      {
+        problem: '"Yandex Metrica rejected the token" (HTTP 401)',
+        solution:
+          'The token expired, was revoked, or was copied incompletely. Open the authorize link from step 5 again and paste the new token.',
+      },
+      {
+        problem: '"Yandex Metrica denied access" (HTTP 403)',
+        solution:
+          "The account that approved the token cannot see this counter, or the app lacks metrika:read. Check the counter's access list in Metrica, or edit the app at oauth.yandex.com, add metrika:read and get a new token.",
+      },
+      {
+        problem: 'The counter list is empty or the counter is missing',
+        solution:
+          'The token belongs to a different Yandex account. Sign in to the right account, open the authorize link again and replace the token.',
+      },
+      {
+        problem: '"Query is too complicated" or throttling errors',
+        solution:
+          'FreeCrawl retries these automatically with growing pauses. If the fetch still fails, try again later or use a shorter window.',
+      },
+    ],
+    notes: [
+      'Pageviews count every view of a URL; visits, users and search-engine visits count sessions by the page they started on. A page can have many pageviews and zero visits.',
+      'Summing users across pages over-counts: one person can land on several pages.',
+      'Metrica API limits are per Yandex account: 200 requests per 5 minutes, 3 at a time, 5,000 per day. One fetch uses a few requests per 100,000 URLs.',
+      'You can revoke the token at any time in your Yandex ID account (id.yandex.com), in the list of apps with access to your data.',
+    ],
+    lastReviewed: '2026-10-11',
+  },
   sheets: {
     intro:
       'Export crawl results straight to a Google Sheet. Better than "download CSV → open in Excel" when you\'re collaborating with teammates on a shared live document.',

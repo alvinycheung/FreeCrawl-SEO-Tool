@@ -50,6 +50,13 @@ import type {
   Ga4FetchMeta,
   UrlAnalyticsDetail,
 } from './google.js';
+import type {
+  MetricaCounter,
+  MetricaRow,
+  MetricaFetchMeta,
+  MetricaNotice,
+  MetricaErrorCode,
+} from './metrica.js';
 import type { AiProvider, AiRow } from './ai.js';
 import type {
   AssistantApprovalInput,
@@ -408,6 +415,17 @@ export const IPC = {
   ga4ListProperties: 'ga4:list-properties',
   ga4Fetch: 'ga4:fetch',
   ga4Query: 'ga4:query',
+  /** Yandex Metrica. `metricaListCounters` lists the counters the stored
+   *  token can read; `metricaFetch` pulls per-page pageviews (hit-level)
+   *  and visits / users / search visits (session-level, by landing page)
+   *  unsampled; `metricaQuery` lists crawled pages joined with that data. */
+  metricaListCounters: 'metrica:list-counters',
+  metricaFetch: 'metrica:fetch',
+  metricaQuery: 'metrica:query',
+  /** Aborts an in-flight `metricaFetch`, backoff pauses included. */
+  metricaCancel: 'metrica:cancel',
+  /** main → renderer: live progress of an in-flight Metrica pull. */
+  metricaProgress: 'metrica:progress',
   /** Faz 7 — AI integrations (OpenAI / Anthropic / Ollama). `aiRun`
    *  applies a prompt template to each selected URL and stores the
    *  response; `aiQuery` lists crawled pages joined with the latest
@@ -1332,7 +1350,8 @@ export interface SitemapOrphanRow {
 /** One row of the cross-source orphan-pages report. */
 export interface OrphanCrossSourceRow {
   url: string;
-  /** Which truth sources mentioned this URL — `sitemap`, `gsc`, `ga4`. */
+  /** Which truth sources mentioned this URL — `sitemap`, `gsc`, `ga4`,
+   *  `metrica`. */
   sources: string[];
   /** Search Console clicks for this URL, when it came from GSC. */
   gscClicks: number | null;
@@ -1340,6 +1359,11 @@ export interface OrphanCrossSourceRow {
   gscImpressions: number | null;
   /** Analytics 4 sessions for this URL, when it came from GA4. */
   ga4Sessions: number | null;
+  /** Yandex Metrica pageviews (hit-level), when it came from Metrica. */
+  metricaPageviews: number | null;
+  /** Yandex Metrica visits that landed on this URL, when it came from
+   *  Metrica. */
+  metricaVisits: number | null;
   /** `<lastmod>` from the sitemap, when it came from the sitemap. */
   lastmod: string | null;
 }
@@ -1760,6 +1784,73 @@ export interface Ga4QueryResult {
   meta: Ga4FetchMeta | null;
 }
 
+export interface MetricaListCountersResult {
+  ok: boolean;
+  error: string | null;
+  /** What went wrong, for the UI to word in the user's language. */
+  errorCode: MetricaErrorCode | null;
+  counters: MetricaCounter[];
+}
+
+export interface MetricaFetchInput {
+  /** Counter ID to pull from. */
+  counterId: string;
+  /** Friendly label persisted into the fetch meta for the UI. */
+  counterName: string;
+  days: 7 | 28 | 90;
+}
+
+export interface MetricaFetchResult {
+  ok: boolean;
+  error: string | null;
+  /** What went wrong, for the UI to word in the user's language. */
+  errorCode: MetricaErrorCode | null;
+  /** True when the pull was cancelled; nothing was stored. */
+  cancelled: boolean;
+  rowCount: number;
+  meta: MetricaFetchMeta | null;
+}
+
+/** Live state of a Metrica pull: three reports run in turn, each paged;
+ *  `rows` counts the raw rows the current report has returned so far. */
+export interface MetricaProgress {
+  running: boolean;
+  /** Current report, null once the pull has stopped. */
+  report: 'pageviews' | 'visits' | 'searchVisits' | null;
+  reportIndex: number;
+  reportCount: number;
+  rows: number;
+}
+
+export interface MetricaQueryInput {
+  limit: number;
+  offset: number;
+  search?: string;
+  /**
+   * `with-data` / `without-data` — any Metrica row at all;
+   * `indexable-no-visits` — indexable 2xx HTML pages with zero
+   * landing-page visits; `non200-with-traffic` — non-2xx pages that
+   * still got pageviews or visits.
+   */
+  filter?:
+    | 'all'
+    | 'with-data'
+    | 'without-data'
+    | 'indexable-no-visits'
+    | 'non200-with-traffic';
+  /** Counter whose stored rows to join. Omitted / empty falls back to the
+   *  project's configured counter. */
+  counterId?: string;
+}
+
+export interface MetricaQueryResult {
+  rows: MetricaRow[];
+  total: number;
+  meta: MetricaFetchMeta | null;
+  /** Why an absence filter returned nothing (no complete pull yet). */
+  notice: MetricaNotice | null;
+}
+
 export interface AiRunInput {
   /** Provider to send the prompt to. */
   provider: AiProvider;
@@ -2176,6 +2267,14 @@ export interface FreeCrawlApi {
   ga4Fetch(input: Ga4FetchInput): Promise<Ga4FetchResult>;
   /** List crawled pages joined with their stored GA4 metrics. */
   ga4Query(input: Ga4QueryInput): Promise<Ga4QueryResult>;
+  /** Yandex Metrica — counters, unsampled per-page pull, joined query. */
+  metricaListCounters(): Promise<MetricaListCountersResult>;
+  metricaFetch(input: MetricaFetchInput): Promise<MetricaFetchResult>;
+  metricaQuery(input: MetricaQueryInput): Promise<MetricaQueryResult>;
+  /** Cancel an in-flight Metrica pull; it resolves with `cancelled`. */
+  metricaCancel(): Promise<void>;
+  /** Live progress of an in-flight Metrica pull. */
+  onMetricaProgress(cb: (p: MetricaProgress) => void): () => void;
   /** Run an AI prompt against the given URLs through the chosen
    *  provider. Resolves when the run finishes; subscribe to
    *  `onAiProgress` for live updates. */

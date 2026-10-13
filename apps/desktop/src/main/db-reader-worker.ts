@@ -75,6 +75,7 @@ const ALLOWED_METHODS = new Set<string>([
   'getSpellingMatches',
   'queryGsc',
   'queryGa4',
+  'queryMetrica',
   'queryAi',
   'querySeo',
   'getUrlAnalytics',

@@ -59,6 +59,7 @@ export type TabKey =
   | 'spelling'
   | 'search-console'
   | 'analytics'
+  | 'metrica'
   | 'ai'
   | 'seo'
   | 'assistant';
@@ -94,6 +95,7 @@ export const TAB_ORDER: { key: TabKey; label: string }[] = [
   { key: 'spelling', label: 'Spelling' },
   { key: 'search-console', label: 'Search Console' },
   { key: 'analytics', label: 'GA4' },
+  { key: 'metrica', label: 'Yandex Metrica' },
   { key: 'ai', label: 'AI' },
   { key: 'seo', label: 'SEO Authority' },
   { key: 'assistant', label: 'Assistant' },

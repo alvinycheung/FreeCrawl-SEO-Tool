@@ -622,6 +622,81 @@ export const GUIDES_AZ: Record<string, Guide> = {
     ],
     lastReviewed: '2026-06-01',
   },
+  metrica: {
+    intro:
+      'Hər URL üçün seçməsiz Yandex Metrica məlumatını çəkin: səhifə baxışları (hit səviyyəsi, səhifə URL-inə görə), həmçinin ziyarətlər, istifadəçilər və axtarış sistemlərindən gələn ziyarətlər (sessiya səviyyəsi, giriş səhifəsinə görə). Öz kiçik Yandex OAuth tətbiqinizi və yalnız oxumaq üçün token yaradırsınız, ona görə də API kvotaları yalnız öz Yandex hesabınızdan sərf olunur.',
+    prereqs: [
+      'Metrica sayğacına baxa bilən Yandex hesabı — sayğacın sahibi və ya sahibin ən azı baxış girişi verdiyi istifadəçi (Metrica → Settings → Access).',
+      'Təxminən 5 dəqiqə. Nə ödəniş, nə də tətbiq yoxlaması tələb olunur.',
+    ],
+    steps: [
+      {
+        title: 'Yandex OAuth tətbiq qeydiyyatı səhifəsini açın',
+        detail:
+          'Sayğaca baxa bilən Yandex hesabı ilə daxil olun. Bir neçə Yandex hesabına daxil olmusunuzsa, əvvəlcə düzgün hesaba keçin — token 5-ci addımda girişi təsdiqləyən hesaba məxsus olur.',
+        link: { label: 'oauth.yandex.com', url: 'https://oauth.yandex.com/client/new' },
+      },
+      {
+        title: 'Tətbiq tipi olaraq "For API access or debugging" seçin',
+        detail:
+          'Tətbiq yaradıldıqdan sonra tipi dəyişmək olmur. Sonra doldurun:\n• Ad: "FreeCrawl" (tanıyacağınız istənilən ad)\n• Əlaqə e-poçtu: ünvanınız',
+      },
+      {
+        title: 'metrika:read icazəsini əlavə edin',
+        detail:
+          'Məlumata giriş bölməsində Yandex Metrica-nı axtarın və yalnız metrika:read kodlu icazəni (statistikanın və sayğac parametrlərinin oxunması) işarələyin. FreeCrawl Metrica-ya heç vaxt yazmır, ona görə də metrika:write və digər icazələri işarəsiz saxlayın.\n\nSayğac təşkilat hesabına (Yandex 360 for Business) məxsusdursa, passport:business icazəsini də əlavə edin.',
+      },
+      {
+        title: 'Tətbiqi yaradın və onun ClientID-sini kopyalayın',
+        detail:
+          'Saxladıqdan sonra tətbiq səhifəsində ClientID (32 simvolluq onaltılıq sətir) göstərilir. Müştəri sirrinə ehtiyac yoxdur.',
+      },
+      {
+        title: 'Token almaq üçün avtorizasiya keçidini açın',
+        detail:
+          'Həmin brauzerdə <ClientID> yerinə öz ClientID-nizi qoyaraq bu ünvanı açın:\n\nhttps://oauth.yandex.com/authorize?response_type=token&client_id=<ClientID>\n\nGiriş sorğusunu təsdiqləyin. Bundan sonra Yandex tokeni səhifədə göstərir — onu kopyalayın.',
+      },
+      {
+        title: 'Tokeni FreeCrawl-a yapışdırın',
+        detail:
+          'Parametrlər → İnteqrasiyalar → Yandex Metrica → OAuth token → Saxla. Token bu kompüterdə qalır və yalnız Metrica API-yə göndərilir. Əməliyyat sisteminin açar anbarı mövcud olduqda onunla şifrələnir; açar dəsti olmayan Linux-da isə yalnız sizin istifadəçinizin oxuya bildiyi faylda şifrələnmədən saxlanılır.',
+      },
+      {
+        title: 'Sayğacları siyahılayın, birini seçin və endirin',
+        detail:
+          'Taranan saytın sayğacını seçin, pəncərə seçin (dünən bitən son 7, 28 və ya 90 tam gün) və endirin. Böyük sayt bir neçə dəqiqə çəkir: Metrica 100.000 URL-ə qədər olan hər nəticə səhifəsini 15–30 san ərzində qaytarır.',
+      },
+    ],
+    troubleshooting: [
+      {
+        problem: '"Yandex Metrica rejected the token" (HTTP 401)',
+        solution:
+          'Tokenin müddəti bitib, token ləğv edilib və ya natamam kopyalanıb. 5-ci addımdakı avtorizasiya keçidini yenidən açın və yeni tokeni yapışdırın.',
+      },
+      {
+        problem: '"Yandex Metrica denied access" (HTTP 403)',
+        solution:
+          'Tokeni təsdiqləyən hesab bu sayğacı görmür və ya tətbiqdə metrika:read icazəsi yoxdur. Metrica-da sayğacın giriş siyahısını yoxlayın və ya oauth.yandex.com-da tətbiqi redaktə edin, metrika:read əlavə edin və yeni token alın.',
+      },
+      {
+        problem: 'The counter list is empty or the counter is missing',
+        solution:
+          'Token başqa Yandex hesabına məxsusdur. Düzgün hesaba daxil olun, avtorizasiya keçidini yenidən açın və tokeni dəyişin.',
+      },
+      {
+        problem: '"Query is too complicated" or throttling errors',
+        solution:
+          'FreeCrawl bu sorğuları getdikcə artan fasilələrlə avtomatik təkrarlayır. Endirmə yenə də alınmırsa, bir az sonra yenidən cəhd edin və ya daha qısa pəncərə seçin.',
+      },
+    ],
+    notes: [
+      'Səhifə baxışları URL-in hər baxışını sayır; ziyarətlər, istifadəçilər və axtarış sistemlərindən gələn ziyarətlər isə sessiyaları başladıqları səhifəyə görə sayır. Səhifənin çoxlu baxışı və sıfır ziyarəti ola bilər.',
+      'İstifadəçiləri səhifələr üzrə toplamaq artıq sayma ilə nəticələnir: bir nəfər sayta bir neçə səhifədən daxil ola bilər.',
+      'Metrica API limitləri hər Yandex hesabı üçündür: 5 dəqiqədə 200 sorğu, eyni anda 3, gündə 5.000. Bir endirmə hər 100.000 URL üçün bir neçə sorğu istifadə edir.',
+      'Tokeni istənilən vaxt Yandex ID hesabınızda (id.yandex.com), məlumatlarınıza girişi olan tətbiqlər siyahısında ləğv edə bilərsiniz.',
+    ],
+    lastReviewed: '2026-10-11',
+  },
   sheets: {
     intro:
       'Tarama nəticələrini birbaşa Google Sheet-ə ixrac edin. Həmkarlarla paylaşılan canlı sənəd üzərində işləyərkən "CSV endir → Excel-də aç"-dan daha yaxşıdır.',

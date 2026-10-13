@@ -627,6 +627,81 @@ export const GUIDES_FR: Record<string, Guide> = {
     ],
     lastReviewed: '2026-06-01',
   },
+  metrica: {
+    intro:
+      "Récupérez les données Yandex Metrica non échantillonnées par URL : pages vues (niveau hit, par URL de page) ainsi que visites, utilisateurs et visites depuis les moteurs de recherche (niveau session, par page d'entrée). Vous créez votre propre petite application OAuth Yandex et un jeton en lecture seule : les quotas de l'API sont donc décomptés uniquement de votre propre compte Yandex.",
+    prereqs: [
+      "Un compte Yandex pouvant consulter le compteur Metrica — son propriétaire ou un utilisateur auquel le propriétaire a accordé au moins un accès en lecture (Metrica → Settings → Access).",
+      "Environ 5 minutes. Aucun paiement ni validation de l'application n'est nécessaire.",
+    ],
+    steps: [
+      {
+        title: "Ouvrez la page d'enregistrement des applications OAuth de Yandex",
+        detail:
+          "Connectez-vous avec le compte Yandex qui peut consulter le compteur. Si vous êtes connecté à plusieurs comptes Yandex, basculez d'abord sur le bon — le jeton appartient au compte qui l'approuve à l'étape 5.",
+        link: { label: 'oauth.yandex.com', url: 'https://oauth.yandex.com/client/new' },
+      },
+      {
+        title: 'Choisissez le type d\'application "For API access or debugging"',
+        detail:
+          'Le type ne peut plus être modifié une fois l\'application créée. Renseignez ensuite :\n• Name : "FreeCrawl" (n\'importe quel libellé que vous reconnaîtrez)\n• Contact email : votre adresse',
+      },
+      {
+        title: "Ajoutez l'autorisation metrika:read",
+        detail:
+          "Dans la section d'accès aux données, recherchez Yandex Metrica et cochez uniquement l'autorisation portant le code metrika:read (lecture des statistiques et des paramètres du compteur). FreeCrawl n'écrit jamais dans Metrica : laissez donc metrika:write et les autres autorisations décochées.\n\nSi le compteur appartient à un compte d'organisation (Yandex 360 for Business), ajoutez aussi passport:business.",
+      },
+      {
+        title: "Créez l'application et copiez son ClientID",
+        detail:
+          "Après l'enregistrement, la page de l'application affiche le ClientID (une chaîne hexadécimale de 32 caractères). Vous n'avez pas besoin du client secret.",
+      },
+      {
+        title: "Ouvrez le lien d'autorisation pour obtenir le jeton",
+        detail:
+          "Dans le même navigateur, ouvrez cette adresse en remplaçant <ClientID> par votre ClientID :\n\nhttps://oauth.yandex.com/authorize?response_type=token&client_id=<ClientID>\n\nApprouvez la demande d'accès. Yandex affiche alors le jeton sur la page — copiez-le.",
+      },
+      {
+        title: 'Collez le jeton dans FreeCrawl',
+        detail:
+          "Paramètres → Intégrations → Yandex Metrica → OAuth token → Enregistrer. Le jeton reste sur cet ordinateur et n'est envoyé qu'à l'API Metrica. Il est chiffré avec le trousseau du système d'exploitation lorsqu'il y en a un ; sous Linux sans keyring, il est stocké non chiffré dans un fichier lisible uniquement par votre utilisateur.",
+      },
+      {
+        title: 'Listez les compteurs, choisissez-en un et téléchargez',
+        detail:
+          "Choisissez le compteur du site exploré, une fenêtre (les 7, 28 ou 90 derniers jours complets, jusqu'à hier) puis téléchargez. Un gros site prend quelques minutes : Metrica répond à chaque page de 100 000 URL maximum en 15–30 s.",
+      },
+    ],
+    troubleshooting: [
+      {
+        problem: '"Yandex Metrica rejected the token" (HTTP 401)',
+        solution:
+          "Le jeton a expiré, a été révoqué ou a été copié de façon incomplète. Rouvrez le lien d'autorisation de l'étape 5 et collez le nouveau jeton.",
+      },
+      {
+        problem: '"Yandex Metrica denied access" (HTTP 403)',
+        solution:
+          "Le compte qui a approuvé le jeton ne voit pas ce compteur, ou l'application n'a pas metrika:read. Vérifiez la liste d'accès du compteur dans Metrica, ou modifiez l'application sur oauth.yandex.com, ajoutez metrika:read et obtenez un nouveau jeton.",
+      },
+      {
+        problem: 'The counter list is empty or the counter is missing',
+        solution:
+          "Le jeton appartient à un autre compte Yandex. Connectez-vous au bon compte, rouvrez le lien d'autorisation et remplacez le jeton.",
+      },
+      {
+        problem: '"Query is too complicated" or throttling errors',
+        solution:
+          'FreeCrawl les relance automatiquement avec des pauses de plus en plus longues. Si le téléchargement échoue encore, réessayez plus tard ou choisissez une fenêtre plus courte.',
+      },
+    ],
+    notes: [
+      "Les pages vues comptent chaque affichage d'une URL ; les visites, les utilisateurs et les visites depuis les moteurs de recherche comptent les sessions selon la page où elles ont commencé. Une page peut avoir beaucoup de pages vues et zéro visite.",
+      'Additionner les utilisateurs de plusieurs pages surestime le total : une même personne peut arriver sur plusieurs pages.',
+      "Les limites de l'API Metrica s'appliquent par compte Yandex : 200 requêtes par tranche de 5 minutes, 3 simultanées, 5 000 par jour. Un téléchargement utilise quelques requêtes par tranche de 100 000 URL.",
+      'Vous pouvez révoquer le jeton à tout moment depuis votre compte Yandex ID (id.yandex.com), dans la liste des applications ayant accès à vos données.',
+    ],
+    lastReviewed: '2026-10-11',
+  },
   sheets: {
     intro:
       'Exportez les résultats d\'exploration directement dans une feuille Google Sheets. Mieux que "télécharger le CSV → ouvrir dans Excel" quand vous collaborez avec des collègues sur un document partagé en direct.',

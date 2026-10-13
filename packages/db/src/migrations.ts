@@ -2314,6 +2314,35 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 93,
+    name: 'add_metrica_results_table',
+    // Yandex Metrica integration. Per-page metrics pulled unsampled from
+    // the Reporting API for a date range, wholesale-replaced per pull like
+    // `ga4_results`. `account_id` is the Metrica counter ID (one token can
+    // read several counters), so `(url, account_id)` keeps two counters
+    // that report on the same URL apart. `url` is the crawl-normalised
+    // form (`normalizeUrl`), so it joins straight onto `urls.url`.
+    //
+    // `pageviews` is hit-level (views of the page URL); `visits`, `users`
+    // and `search_visits` are session-level, attributed to the landing
+    // page.
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS metrica_results (
+          url            TEXT NOT NULL,
+          account_id     TEXT NOT NULL DEFAULT '',
+          pageviews      INTEGER NOT NULL DEFAULT 0,
+          visits         INTEGER NOT NULL DEFAULT 0,
+          users          INTEGER NOT NULL DEFAULT 0,
+          search_visits  INTEGER NOT NULL DEFAULT 0,
+          fetched_at     TEXT NOT NULL,
+          PRIMARY KEY (url, account_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_metrica_results_account ON metrica_results(account_id);
+      `);
+    },
+  },
 ];
 
 export function runMigrations(db: DatabaseSync): void {

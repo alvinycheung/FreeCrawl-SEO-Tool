@@ -184,6 +184,17 @@ import {
   type Ga4FetchMeta,
   type Ga4QueryInput,
   type Ga4QueryResult,
+  type MetricaIntegrationSettings,
+  defaultMetricaSettings,
+  type MetricaListCountersResult,
+  type MetricaFetchInput,
+  type MetricaFetchResult,
+  type MetricaFetchMeta,
+  type MetricaQueryInput,
+  type MetricaQueryResult,
+  type MetricaProgress,
+  type MetricaNotice,
+  type MetricaErrorCode,
   type AiRunInput,
   type AiRunResult,
   type AiQueryInput,
@@ -344,6 +355,12 @@ import {
 import { exportCategoryToSheets } from './sheets-export.js';
 import { exportCategoryToBigQuery } from './bigquery-export.js';
 import { listProperties as ga4ListProperties, runReport as ga4RunReport } from './ga4.js';
+import {
+  listCounters as metricaListCounters,
+  fetchPageMetrics as metricaFetchPageMetrics,
+  MetricaCancelledError,
+  MetricaError,
+} from './metrica.js';
 import { runAiBatch, type AiBatchItem } from './ai-batch.js';
 import { resolveModel, defaultConcurrency } from './ai-providers.js';
 import { runSeoBatch } from './seo-batch.js';
@@ -362,6 +379,7 @@ import {
   DbReaderPool,
 } from './db-reader-pool.js';
 import {
+  callWriterOrFallback,
   dbWriterPool,
   DbWriterPool,
   setWriterPoolResolver,
@@ -429,6 +447,9 @@ interface FetchRunSnapshot {
   provider: string | null;
   /** Set when the run threw before finishing. */
   error: string | null;
+  /** Kind-specific progress note: for Metrica, the current report and the
+   *  raw rows it has returned so far. Null for the URL-batch kinds. */
+  detail: string | null;
 }
 function idleFetchSnapshot(): FetchRunSnapshot {
   return {
@@ -443,6 +464,7 @@ function idleFetchSnapshot(): FetchRunSnapshot {
     finishedAt: null,
     provider: null,
     error: null,
+    detail: null,
   };
 }
 
@@ -571,6 +593,9 @@ class ProjectSession {
     spelling: newFetchRunSlot(),
     ai: newFetchRunSlot(),
     seo: newFetchRunSlot(),
+    // A Metrica pull is three paged reports, not a URL batch: done/total
+    // count reports, and `abort` cancels mid-request or mid-backoff.
+    metrica: { ...newFetchRunSlot(), abort: null as AbortController | null },
     gscInspect: { active: false, cancelRequested: false },
   };
 
@@ -5473,11 +5498,13 @@ function registerIpc(): void {
     IPC.reportsOrphanCrossSource,
     (_e, limit?: number): Promise<OrphanCrossSourceRow[]> => {
       // Scoped to the project's selected accounts — the cross-source
-      // joins are only 1:1 when pinned to one GSC + one GA4 account.
-      const args: [number, string, string] = [
+      // joins are only 1:1 when pinned to one GSC + one GA4 account and
+      // one Metrica counter.
+      const args: [number, string, string, string] = [
         limit ?? 1000,
         resolveGoogleAccount('gsc'),
         resolveGoogleAccount('ga4'),
+        resolveMetricaSettings().counterId,
       ];
       return callReaderOrFallback<OrphanCrossSourceRow[]>(
         'orphanPagesCrossSource',
@@ -6538,6 +6565,257 @@ function registerIpc(): void {
     },
   );
 
+  // Yandex Metrica. Same shape as GA4: list counters, fetch a date-range
+  // snapshot, query crawled pages joined with the stored data. Auth is a
+  // personal token from the credential store; rows are keyed by counter.
+  const metricaToken = (): string => {
+    const token = resolveCredentials('metrica')['token']?.trim() ?? '';
+    if (!token) {
+      throw new MetricaError(
+        'Yandex Metrica is not connected — paste a token in Settings → Integrations → Yandex Metrica.',
+        'not-connected',
+      );
+    }
+    // Checked before any request: a pasted blob with spaces or line breaks
+    // would otherwise reach undici, whose header error quotes the value.
+    if (!/^[A-Za-z0-9._~+/=-]+$/.test(token)) {
+      throw new MetricaError(
+        'The saved Yandex Metrica token has an unexpected format — paste it again in Settings → Integrations → Yandex Metrica.',
+        'token-format',
+      );
+    }
+    return token;
+  };
+  const resolveMetricaSettings = (): MetricaIntegrationSettings =>
+    ({
+      ...defaultMetricaSettings(),
+      ...(readIntegrationSettings('metrica') ?? {}),
+    }) as MetricaIntegrationSettings;
+  /** Normaliser that maps Metrica's raw page URLs onto `urls.url` with the
+   *  project's own URL rewrite options, so the join matches the crawl. */
+  const crawlUrlNormalizer = (): ((url: string) => string | null) => {
+    const sess = currentSession();
+    let config = sess.lastCrawlConfig;
+    if (!config) config = restoreProjectConfig(sess.getDb());
+    const c = config ?? DEFAULT_CRAWL_CONFIG;
+    const rewrites = {
+      stripWww: c.stripWww,
+      forceHttps: c.forceHttps,
+      lowercasePath: c.lowercasePath,
+      trailingSlash: c.trailingSlash,
+      keepQueryParams: c.keepQueryParams,
+      sortQueryParams: c.sortQueryParams,
+      collapseDuplicateSlashes: c.collapseDuplicateSlashes,
+      keepHashRoutes: c.renderingMode === 'js' && c.jsRender?.spaRouting === true,
+      regexRewrites: compileUrlRegexRewrites(c.urlRegexRewrites),
+    };
+    return (url) => normalizeUrl(url, undefined, rewrites);
+  };
+  // Shared by the IPC handlers and the MCP bridge actions.
+  const runMetricaListCounters = async (): Promise<MetricaListCountersResult> => {
+    try {
+      return {
+        ok: true,
+        error: null,
+        errorCode: null,
+        counters: await metricaListCounters(metricaToken()),
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+        errorCode: err instanceof MetricaError ? err.code : null,
+        counters: [],
+      };
+    }
+  };
+  /**
+   * Pull one counter into the open project. Everything before the first
+   * await is synchronous, so the run slot is claimed (or the input
+   * rejected) by the time the call returns its promise; the MCP action
+   * relies on that to answer at once. One pull per window at a time: two
+   * would race on the replace, and the older one could win.
+   */
+  const runMetricaFetch = (input: MetricaFetchInput): Promise<MetricaFetchResult> => {
+    const fail = (
+      error: string,
+      errorCode: MetricaErrorCode | null,
+      cancelled = false,
+    ): MetricaFetchResult => ({
+      ok: false,
+      error,
+      errorCode,
+      cancelled,
+      rowCount: 0,
+      meta: null,
+    });
+    const counterId = String(input.counterId ?? '').trim();
+    if (!/^\d+$/.test(counterId)) {
+      return Promise.resolve(fail('No Yandex Metrica counter selected.', 'no-counter'));
+    }
+    const days = input.days;
+    if (days !== 7 && days !== 28 && days !== 90) {
+      return Promise.resolve(fail('Unsupported Yandex Metrica date range.', 'bad-range'));
+    }
+    const runSession = currentSession();
+    const run = runSession.fetchRuns.metrica;
+    if (run.active) {
+      return Promise.resolve(fail('A Yandex Metrica fetch is already running in this window.', 'already-running'));
+    }
+    let token: string;
+    let normalize: (url: string) => string | null;
+    try {
+      token = metricaToken();
+      normalize = crawlUrlNormalizer();
+    } catch (err) {
+      return Promise.resolve(
+        fail(
+          err instanceof Error ? err.message : String(err),
+          err instanceof MetricaError ? err.code : null,
+        ),
+      );
+    }
+    // Pin the pull to the project open now. Opening another project in
+    // this window replaces `runSession.db`, so identity says whether the
+    // result still belongs to the open project.
+    const runDb = runSession.getDb();
+    const sameProject = (): boolean => runSession.db === runDb;
+    const switchedError = (): MetricaError =>
+      new MetricaError(
+        'Another project was opened during the Yandex Metrica fetch, so its result was discarded. Fetch again in this project.',
+        'project-switched',
+      );
+    const counterName = input.counterName || counterId;
+    const abort = new AbortController();
+    run.active = true;
+    run.cancelRequested = false;
+    run.abort = abort;
+    run.snapshot = {
+      ...idleFetchSnapshot(),
+      running: true,
+      total: 3,
+      provider: counterId,
+      startedAt: new Date().toISOString(),
+    };
+    const sendProgress = (p: MetricaProgress): void => runSession.send(IPC.metricaProgress, p);
+    sendProgress({ running: true, report: 'pageviews', reportIndex: 1, reportCount: 3, rows: 0 });
+    return (async (): Promise<MetricaFetchResult> => {
+      try {
+        // The window ends yesterday in the counter's time zone (see metrica.ts).
+        const result = await metricaFetchPageMetrics(token, counterId, days, normalize, {
+          signal: abort.signal,
+          onProgress: (p) => {
+            run.snapshot.done = p.reportIndex - 1;
+            run.snapshot.detail = `${p.report} report ${p.reportIndex}/${p.reportCount}: ${p.rows} rows`;
+            sendProgress({ running: true, ...p });
+          },
+        });
+        if (!sameProject()) throw switchedError();
+        const { startDate, endDate } = result;
+        const fetchedAt = new Date().toISOString();
+        const meta: MetricaFetchMeta = {
+          counterId,
+          counterName,
+          startDate,
+          endDate,
+          fetchedAt,
+          rowCount: result.rows.length,
+          truncated: result.truncated,
+          sampled: result.sampled,
+          totals: result.totals,
+        };
+        const writeArgs = [result.rows, fetchedAt, counterId, JSON.stringify(meta)] as const;
+        // Off the main thread: a large counter is hundreds of thousands of
+        // rows. The project check above and the worker post run in the same
+        // tick, so the write can't land in a project opened in between.
+        await callWriterOrFallback('replaceMetricaResults', [...writeArgs], () => {
+          if (!sameProject()) throw switchedError();
+          runDb.replaceMetricaResults(...writeArgs);
+        });
+        if (!sameProject()) throw switchedError();
+        // Records the pulled counter and range; picking a counter in the tab
+        // also stores it, so every Metrica view reads the counter shown.
+        writeIntegrationSettings('metrica', { counterId, counterName, days });
+        fireDataChanged(runSession);
+        logger.log('info', 'metrica', `Metrica pull stored — ${result.rows.length} page row(s)`);
+        run.snapshot = {
+          ...run.snapshot,
+          running: false,
+          done: 3,
+          completed: result.rows.length,
+          detail: null,
+          finishedAt: new Date().toISOString(),
+        };
+        return {
+          ok: true,
+          error: null,
+          errorCode: null,
+          cancelled: false,
+          rowCount: result.rows.length,
+          meta,
+        };
+      } catch (err) {
+        const cancelled = err instanceof MetricaCancelledError;
+        const error = err instanceof Error ? err.message : String(err);
+        logger.log(cancelled ? 'info' : 'warn', 'metrica', `Metrica pull ${cancelled ? 'cancelled' : 'failed'}: ${error}`);
+        run.snapshot = {
+          ...run.snapshot,
+          running: false,
+          cancelled,
+          error: cancelled ? null : error,
+          detail: null,
+          finishedAt: new Date().toISOString(),
+        };
+        return fail(error, err instanceof MetricaError ? err.code : null, cancelled);
+      } finally {
+        run.active = false;
+        run.cancelRequested = false;
+        run.abort = null;
+        sendProgress({ running: false, report: null, reportIndex: 0, reportCount: 3, rows: 0 });
+      }
+    })();
+  };
+  /** Abort this window's Metrica pull, if one is running. */
+  const cancelMetricaFetch = (): boolean => {
+    const run = currentSession().fetchRuns.metrica;
+    if (!run.active) return false;
+    run.cancelRequested = true;
+    run.abort?.abort();
+    logger.log('info', 'metrica', 'Metrica pull cancellation requested');
+    return true;
+  };
+  registerHandle(IPC.metricaListCounters, () => runMetricaListCounters());
+  registerHandle(IPC.metricaFetch, (_e, input: MetricaFetchInput) => runMetricaFetch(input));
+  registerHandle(IPC.metricaCancel, () => {
+    cancelMetricaFetch();
+  });
+  registerHandle(
+    IPC.metricaQuery,
+    async (_e, input: MetricaQueryInput): Promise<MetricaQueryResult> => {
+      const counterId = input.counterId || resolveMetricaSettings().counterId;
+      const params = {
+        limit: input.limit,
+        offset: input.offset,
+        search: input.search,
+        filter: input.filter,
+        counterId,
+      };
+      const result = await callReaderOrFallback<{
+        rows: MetricaQueryResult['rows'];
+        total: number;
+        notice: MetricaNotice | null;
+      }>('queryMetrica', [params], () => getDb().queryMetrica(params));
+      let meta: MetricaFetchMeta | null = null;
+      try {
+        const raw = counterId ? getDb().getMeta(`metricaFetchMeta:${counterId}`) : null;
+        if (raw) meta = JSON.parse(raw) as MetricaFetchMeta;
+      } catch {
+        /* no / corrupt meta — render without the context line */
+      }
+      return { rows: result.rows, total: result.total, meta, notice: result.notice ?? null };
+    },
+  );
+
   // V1 Faz 7 — AI integrations (OpenAI / Anthropic / Ollama). The
   // renderer hands over a prompt template + URL list; the handler
   // substitutes per-URL variables from the crawl DB, then drives a
@@ -7108,11 +7386,12 @@ function registerIpc(): void {
     async (_e, url: string): Promise<UrlAnalyticsDetail | null> => {
       if (!url) return null;
       // Scoped to the project's selected accounts so the panel agrees
-      // with what the Search Console / GA4 tabs are showing.
-      const args: [string, string, string] = [
+      // with what the Search Console / GA4 / Metrica tabs are showing.
+      const args: [string, string, string, string] = [
         url,
         resolveGoogleAccount('gsc'),
         resolveGoogleAccount('ga4'),
+        resolveMetricaSettings().counterId,
       ];
       return callReaderOrFallback<UrlAnalyticsDetail | null>(
         'getUrlAnalytics',
@@ -7921,13 +8200,14 @@ function registerIpc(): void {
    * upgraded project keeps the data it already pulled.
    */
   /** Account + URL-matching context the dataset exports (Search Console,
-   *  GA4) read with — the same resolution the tabs' query handlers use,
+   *  GA4, Metrica) read with — the same resolution the tabs' query handlers use,
    *  so an exported sheet matches what the tab shows. */
   function datasetExportContext(): DatasetExportContext {
     const gsc = resolveGscSettings();
     return {
       gscAccountId: resolveGoogleAccount('gsc'),
       ga4AccountId: resolveGoogleAccount('ga4'),
+      metricaCounterId: resolveMetricaSettings().counterId,
       gscMatchSlash: gsc.matchSlash,
       gscMatchCase: gsc.matchCase,
     };
@@ -8592,6 +8872,29 @@ function registerIpc(): void {
       }
     },
 
+    'metrica-list-counters': () => runMetricaListCounters(),
+
+    // Non-blocking like pagespeed-run: a pull with retries can outlast the
+    // MCP server's 5-minute header wait. The agent polls fetch-progress
+    // (kind "metrica") and may fetch-cancel.
+    'metrica-fetch': async (input) => {
+      const i = (input ?? {}) as Partial<MetricaFetchInput>;
+      const run = currentSession().fetchRuns.metrica;
+      const alreadyRunning = run.active;
+      const pending = runMetricaFetch({
+        counterId: String(i.counterId ?? ''),
+        counterName: typeof i.counterName === 'string' ? i.counterName : '',
+        days: (i.days ?? 28) as MetricaFetchInput['days'],
+      });
+      if (alreadyRunning || !run.active) {
+        // Rejected before it started (bad input, no token, already running).
+        const result = await pending;
+        return { started: false, reason: result.error, state: run.snapshot };
+      }
+      void pending;
+      return { started: true, state: run.snapshot };
+    },
+
     'ga4-list-properties': async (input) => {
       try {
         const account = resolveGoogleAccount(
@@ -8991,13 +9294,15 @@ function registerIpc(): void {
         spelling: fr.spelling.snapshot,
         ai: fr.ai.snapshot,
         seo: fr.seo.snapshot,
+        metrica: fr.metrica.snapshot,
       };
       if (
         kind === 'pagespeed' ||
         kind === 'crux' ||
         kind === 'spelling' ||
         kind === 'ai' ||
-        kind === 'seo'
+        kind === 'seo' ||
+        kind === 'metrica'
       ) {
         return { [kind]: all[kind] };
       }
@@ -9033,17 +9338,22 @@ function registerIpc(): void {
         if (was) fr.spelling.cancelRequested = true;
         cancelled.spelling = { wasRunning: was };
       };
+      const cancelMetrica = (): void => {
+        cancelled.metrica = { wasRunning: cancelMetricaFetch() };
+      };
       if (kind === 'pagespeed') cancelPagespeed();
       else if (kind === 'crux') cancelCrux();
       else if (kind === 'spelling') cancelSpelling();
       else if (kind === 'ai') cancelAi();
       else if (kind === 'seo') cancelSeo();
+      else if (kind === 'metrica') cancelMetrica();
       else {
         cancelPagespeed();
         cancelCrux();
         cancelSpelling();
         cancelAi();
         cancelSeo();
+        cancelMetrica();
       }
       return { ok: true, cancelled };
     },

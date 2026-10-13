@@ -93,7 +93,7 @@ const REPORT_LABELS: Record<ReportKind, string> = {
   'url-length-histogram': 'URL Length Histogram',
   'word-count-per-dir': 'Word Count per Directory',
   'sitemap-orphans': 'Sitemap Orphans (Top 1000)',
-  'orphan-cross-source': 'Orphan Pages — Sitemap + GSC + GA4 (Top 1000)',
+  'orphan-cross-source': 'Orphan Pages — Sitemap + GSC + GA4 + Metrica (Top 1000)',
   'server-headers': 'Server Stack (Server Header)',
   'top-words': 'Top Words (Title + Meta + H1, Top 100)',
   'pages-over-link-limit': 'Pages Over Max Links per Page',
@@ -395,16 +395,58 @@ export function ReportsDialog({ open, onClose }: Props) {
               r.map((x: OrphanCrossSourceRow) => ({
                 key: x.url,
                 count: 1,
-                // `sources` (sitemap / gsc / ga4) plus any traffic go in the
+                // `sources` (sitemap / gsc / ga4 / metrica) plus any traffic go in the
                 // secondary value column so the user can triage why each URL
                 // was missed and how much it matters — sitemap-only with no
                 // traffic is often a dead entry to drop; GSC clicks / GA4
                 // sessions mean real user-visited pages no crawl path reaches.
                 valueLabel: [
                   x.sources.join(' + '),
-                  x.gscClicks != null ? `${x.gscClicks.toLocaleString()} GSC clicks` : null,
-                  x.gscImpressions != null ? `${x.gscImpressions.toLocaleString()} impr` : null,
-                  x.ga4Sessions != null ? `${x.ga4Sessions.toLocaleString()} GA4 sessions` : null,
+                  x.gscClicks != null
+                    ? t('reports.orphanGscClicks', {
+                        defaultValue_one: '{{formatted}} GSC click',
+                        defaultValue_other: '{{formatted}} GSC clicks',
+                        defaultValue: '{{formatted}} GSC clicks',
+                        count: x.gscClicks,
+                        formatted: x.gscClicks.toLocaleString(),
+                      })
+                    : null,
+                  x.gscImpressions != null
+                    ? t('reports.orphanGscImpressions', {
+                        defaultValue_one: '{{formatted}} impr',
+                        defaultValue_other: '{{formatted}} impr',
+                        defaultValue: '{{formatted}} impr',
+                        count: x.gscImpressions,
+                        formatted: x.gscImpressions.toLocaleString(),
+                      })
+                    : null,
+                  x.ga4Sessions != null
+                    ? t('reports.orphanGa4Sessions', {
+                        defaultValue_one: '{{formatted}} GA4 session',
+                        defaultValue_other: '{{formatted}} GA4 sessions',
+                        defaultValue: '{{formatted}} GA4 sessions',
+                        count: x.ga4Sessions,
+                        formatted: x.ga4Sessions.toLocaleString(),
+                      })
+                    : null,
+                  x.metricaVisits != null
+                    ? t('reports.orphanMetricaVisits', {
+                        defaultValue_one: '{{formatted}} Metrica visit (landing)',
+                        defaultValue_other: '{{formatted}} Metrica visits (landing)',
+                        defaultValue: '{{formatted}} Metrica visits (landing)',
+                        count: x.metricaVisits,
+                        formatted: x.metricaVisits.toLocaleString(),
+                      })
+                    : null,
+                  x.metricaPageviews != null
+                    ? t('reports.orphanMetricaPageviews', {
+                        defaultValue_one: '{{formatted}} Metrica pageview (hits)',
+                        defaultValue_other: '{{formatted}} Metrica pageviews (hits)',
+                        defaultValue: '{{formatted}} Metrica pageviews (hits)',
+                        count: x.metricaPageviews,
+                        formatted: x.metricaPageviews.toLocaleString(),
+                      })
+                    : null,
                 ]
                   .filter(Boolean)
                   .join(' · '),
@@ -481,7 +523,7 @@ export function ReportsDialog({ open, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [open, kind, depth, maxLinksPerPage, includeBody]);
+  }, [open, kind, depth, maxLinksPerPage, includeBody, t]);
 
   useEffect(() => {
     if (!open) return;

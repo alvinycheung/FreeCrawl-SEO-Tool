@@ -624,6 +624,81 @@ export const GUIDES_IT: Record<string, Guide> = {
     ],
     lastReviewed: '2026-06-01',
   },
+  metrica: {
+    intro:
+      "Recupera i dati di Yandex Metrica per URL senza campionamento: visualizzazioni di pagina (livello di hit, per URL di pagina) e visite, utenti e visite dai motori di ricerca (livello di sessione, per pagina di ingresso). Crei una tua piccola app OAuth di Yandex e un token di sola lettura, così le quote dell'API vengono scalate solo dal tuo account Yandex.",
+    prereqs: [
+      "Un account Yandex che possa vedere il contatore Metrica — il suo proprietario o un utente a cui il proprietario ha concesso almeno l'accesso in visualizzazione (Metrica → Settings → Access).",
+      "Circa 5 minuti. Non servono pagamenti né la revisione dell'app.",
+    ],
+    steps: [
+      {
+        title: 'Apri la pagina di registrazione delle app OAuth di Yandex',
+        detail:
+          "Accedi con l'account Yandex che può vedere il contatore. Se hai effettuato l'accesso con più account Yandex, passa prima a quello giusto — il token appartiene all'account che lo approva al passaggio 5.",
+        link: { label: 'oauth.yandex.com', url: 'https://oauth.yandex.com/client/new' },
+      },
+      {
+        title: 'Scegli il tipo di app "For API access or debugging"',
+        detail:
+          'Il tipo non può essere modificato dopo la creazione dell\'app. Poi compila:\n• Name: "FreeCrawl" (qualsiasi etichetta che riconoscerai)\n• Contact email: il tuo indirizzo',
+      },
+      {
+        title: 'Aggiungi il permesso metrika:read',
+        detail:
+          'Nella sezione di accesso ai dati, cerca Yandex Metrica e spunta solo il permesso con il codice metrika:read (lettura delle statistiche e dei parametri del contatore). FreeCrawl non scrive mai su Metrica, quindi lascia non spuntati metrika:write e gli altri permessi.\n\nSe il contatore appartiene a un account aziendale (Yandex 360 for Business), aggiungi anche passport:business.',
+      },
+      {
+        title: "Crea l'app e copia il suo ClientID",
+        detail:
+          "Dopo il salvataggio, la pagina dell'app mostra il ClientID (una stringa esadecimale di 32 caratteri). Il client secret non ti serve.",
+      },
+      {
+        title: 'Apri il link di autorizzazione per ottenere il token',
+        detail:
+          'Nello stesso browser, apri questo indirizzo sostituendo <ClientID> con il tuo ClientID:\n\nhttps://oauth.yandex.com/authorize?response_type=token&client_id=<ClientID>\n\nApprova la richiesta di accesso. Yandex mostra quindi il token nella pagina — copialo.',
+      },
+      {
+        title: 'Incolla il token in FreeCrawl',
+        detail:
+          "Impostazioni → Integrazioni → Yandex Metrica → OAuth token → Salva. Il token resta su questo computer e viene inviato solo all'API di Metrica. Viene crittografato con il portachiavi del sistema operativo, se disponibile; su Linux senza keyring viene salvato non crittografato in un file leggibile solo dal tuo utente.",
+      },
+      {
+        title: 'Elenca i contatori, scegline uno e scarica',
+        detail:
+          'Scegli il contatore del sito scansionato, una finestra (gli ultimi 7, 28 o 90 giorni interi, fino a ieri) e scarica. Un sito grande richiede alcuni minuti: Metrica risponde a ogni pagina di massimo 100.000 URL in 15–30 s.',
+      },
+    ],
+    troubleshooting: [
+      {
+        problem: '"Yandex Metrica rejected the token" (HTTP 401)',
+        solution:
+          'Il token è scaduto, è stato revocato o è stato copiato in modo incompleto. Riapri il link di autorizzazione del passaggio 5 e incolla il nuovo token.',
+      },
+      {
+        problem: '"Yandex Metrica denied access" (HTTP 403)',
+        solution:
+          "L'account che ha approvato il token non può vedere questo contatore, oppure all'app manca metrika:read. Controlla l'elenco degli accessi del contatore in Metrica, oppure modifica l'app su oauth.yandex.com, aggiungi metrika:read e ottieni un nuovo token.",
+      },
+      {
+        problem: 'The counter list is empty or the counter is missing',
+        solution:
+          "Il token appartiene a un altro account Yandex. Accedi all'account giusto, riapri il link di autorizzazione e sostituisci il token.",
+      },
+      {
+        problem: '"Query is too complicated" or throttling errors',
+        solution:
+          'FreeCrawl li riprova automaticamente con pause sempre più lunghe. Se il download continua a non riuscire, riprova più tardi o usa una finestra più breve.',
+      },
+    ],
+    notes: [
+      'Le visualizzazioni di pagina contano ogni visualizzazione di un URL; visite, utenti e visite dai motori di ricerca contano le sessioni in base alla pagina in cui sono iniziate. Una pagina può avere molte visualizzazioni e zero visite.',
+      'Sommare gli utenti di più pagine porta a un conteggio eccessivo: una stessa persona può entrare da più pagine.',
+      "I limiti dell'API di Metrica valgono per account Yandex: 200 richieste ogni 5 minuti, 3 alla volta, 5.000 al giorno. Un download usa poche richieste ogni 100.000 URL.",
+      "Puoi revocare il token in qualsiasi momento dal tuo account Yandex ID (id.yandex.com), nell'elenco delle app con accesso ai tuoi dati.",
+    ],
+    lastReviewed: '2026-10-11',
+  },
   sheets: {
     intro:
       'Esporta i risultati della scansione direttamente in un foglio Google Sheets. Meglio di "scarica CSV → apri in Excel" quando collabori con i colleghi su un documento condiviso in tempo reale.',

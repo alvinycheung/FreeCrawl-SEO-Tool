@@ -253,6 +253,26 @@ export const INTEGRATIONS: IntegrationDef[] = [
     setupHint: 'Requires a Semrush subscription with API units. Get your API key from Semrush → Subscription info → API.',
   },
 
+  {
+    id: 'metrica',
+    name: 'Yandex Metrica',
+    category: 'seo',
+    authType: 'api-key',
+    description:
+      'Unsampled pageviews (per page URL) and visits, users and search-engine visits (per landing page) for each crawled URL.',
+    fields: [
+      {
+        key: 'token',
+        label: 'OAuth token',
+        secret: true,
+        placeholder: 'Paste a token with the metrika:read scope',
+      },
+    ],
+    helpUrl: 'https://yandex.com/dev/metrika/en/intro/authorization',
+    setupHint:
+      'Register an app of type "For API access or debugging" at oauth.yandex.com with the metrika:read permission, then open https://oauth.yandex.com/authorize?response_type=token&client_id=<your app ID> while signed in to an account that can view the counter, and paste the token shown. The token only reads data.',
+  },
+
   // ---- Google (OAuth bring-your-own-client) ----
   {
     id: 'gsc',

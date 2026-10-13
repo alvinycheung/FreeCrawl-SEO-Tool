@@ -604,6 +604,81 @@ export const GUIDES_ZH_CN: Record<string, Guide> = {
     ],
     lastReviewed: '2026-06-01',
   },
+  metrica: {
+    intro:
+      '获取未抽样的、按 URL 划分的 Yandex Metrica 数据：页面浏览量（命中级，按页面 URL）以及访问次数、用户数和搜索引擎访问次数（会话级，按着陆页）。你需要自行创建一个小型 Yandex OAuth 应用和一个只读令牌，因此 API 配额只计入你自己的 Yandex 账户。',
+    prereqs: [
+      '一个可以查看该 Metrica 计数器的 Yandex 账户——计数器的所有者，或所有者至少授予了查看权限的用户（Metrica → Settings → Access）。',
+      '大约 5 分钟。无需付费，也无需应用审核。',
+    ],
+    steps: [
+      {
+        title: '打开 Yandex OAuth 应用注册页面',
+        detail:
+          '使用可以查看该计数器的 Yandex 账户登录。如果你同时登录了多个 Yandex 账户，请先切换到正确的账户——令牌归属于在第 5 步中批准授权的那个账户。',
+        link: { label: 'oauth.yandex.com', url: 'https://oauth.yandex.com/client/new' },
+      },
+      {
+        title: '选择应用类型 "For API access or debugging"',
+        detail:
+          '应用创建后类型无法更改。然后填写：\n• 名称："FreeCrawl"（任何你能认出的名称均可）\n• 联系邮箱：你的邮箱地址',
+      },
+      {
+        title: '添加 metrika:read 权限',
+        detail:
+          '在数据访问部分搜索 Yandex Metrica，只勾选代码为 metrika:read 的权限（读取统计数据和计数器参数）。FreeCrawl 从不向 Metrica 写入数据，因此请不要勾选 metrika:write 及其他权限。\n\n如果计数器属于组织（Yandex 360 for Business）账户，还需添加 passport:business。',
+      },
+      {
+        title: '创建应用并复制其 ClientID',
+        detail:
+          '保存后，应用页面会显示 ClientID（一个 32 位十六进制字符串）。你不需要客户端机密（client secret）。',
+      },
+      {
+        title: '打开授权链接以获取令牌',
+        detail:
+          '在同一浏览器中打开以下地址，并将 <ClientID> 替换为你的 ClientID：\n\nhttps://oauth.yandex.com/authorize?response_type=token&client_id=<ClientID>\n\n批准访问请求。随后 Yandex 会在页面上显示令牌——将其复制。',
+      },
+      {
+        title: '在 FreeCrawl 中粘贴令牌',
+        detail:
+          '设置 → 集成 → Yandex Metrica → OAuth token → 保存。令牌只保存在这台计算机上，并且只会发送给 Metrica API。如果系统提供密钥链，令牌会用操作系统的密钥链加密；在没有密钥环的 Linux 上，它会以未加密形式存储在只有你的用户才能读取的文件中。',
+      },
+      {
+        title: '列出计数器，选择一个并获取数据',
+        detail:
+          '选择所抓取网站对应的计数器，选择时间窗口（截至昨天的最近 7、28 或 90 个完整天），然后获取。大型网站需要几分钟：Metrica 每返回一页（最多 100,000 个 URL）需要 15–30 秒。',
+      },
+    ],
+    troubleshooting: [
+      {
+        problem: '"Yandex Metrica rejected the token" (HTTP 401)',
+        solution:
+          '令牌已过期、已被撤销，或复制不完整。请再次打开第 5 步中的授权链接，并粘贴新令牌。',
+      },
+      {
+        problem: '"Yandex Metrica denied access" (HTTP 403)',
+        solution:
+          '批准令牌的账户无法查看此计数器，或应用缺少 metrika:read 权限。请在 Metrica 中检查该计数器的访问列表，或在 oauth.yandex.com 编辑应用、添加 metrika:read 并获取新令牌。',
+      },
+      {
+        problem: 'The counter list is empty or the counter is missing',
+        solution:
+          '令牌属于另一个 Yandex 账户。请登录正确的账户，再次打开授权链接并替换令牌。',
+      },
+      {
+        problem: '"Query is too complicated" or throttling errors',
+        solution:
+          'FreeCrawl 会以逐渐延长的间隔自动重试这些请求。如果获取仍然失败，请稍后再试，或使用更短的时间窗口。',
+      },
+    ],
+    notes: [
+      '页面浏览量统计某个 URL 的每一次浏览；访问次数、用户数和搜索引擎访问次数则按会话的起始页面统计会话。一个页面可能有大量页面浏览，却没有任何访问。',
+      '将各页面的用户数相加会造成重复计数：同一个人可能从多个页面进入。',
+      'Metrica API 的限制按 Yandex 账户计算：每 5 分钟 200 个请求，同时最多 3 个，每天 5,000 个。一次获取每 100,000 个 URL 只需几个请求。',
+      '你可以随时在 Yandex ID 账户（id.yandex.com）中有权访问你数据的应用列表里撤销该令牌。',
+    ],
+    lastReviewed: '2026-10-11',
+  },
   sheets: {
     intro:
       '将抓取结果直接导出到 Google 表格。当你与团队成员在共享的实时文档上协作时，比“下载 CSV → 在 Excel 中打开”更好。',

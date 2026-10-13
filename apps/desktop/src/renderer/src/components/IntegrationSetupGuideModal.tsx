@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, BookOpen, ExternalLink, Lightbulb, X } from 'lucide-react';
 import type { IntegrationDef } from '@freecrawl/shared-types';
-import { resolveGuides, type Guide } from './integration-guides/index.js';
+import { GUIDES, resolveGuides, type Guide } from './integration-guides/index.js';
 
 /**
  * In-app step-by-step setup guide for one integration. Lives as a
@@ -24,7 +24,8 @@ import { resolveGuides, type Guide } from './integration-guides/index.js';
  */
 
 function pickGuide(lang: string, integrationId: string): Guide | undefined {
-  return resolveGuides(lang)[integrationId];
+  // A guide that is not translated yet falls back to English.
+  return resolveGuides(lang)[integrationId] ?? GUIDES.en[integrationId];
 }
 
 interface Props {

@@ -10,6 +10,8 @@
  * encrypted at rest with `safeStorage`, exactly like API keys.
  */
 
+import type { MetricaMetrics } from './metrica.js';
+
 /**
  * One connected Google account for an integration. A user can link
  * several accounts to the same integration (e.g. their own Search
@@ -254,12 +256,16 @@ export interface Ga4Row {
 }
 
 /** Combined per-URL Analytics view — GSC Search Analytics + GA4 +
- *  GSC URL Inspection, returned by `urlAnalyticsGet` for the detail
- *  panel's Analytics sub-tab. Any field is null when no data exists. */
+ *  Yandex Metrica + GSC URL Inspection, returned by `urlAnalyticsGet` for
+ *  the detail panel's Analytics sub-tab. Any field is null when no data
+ *  exists. */
 export interface UrlAnalyticsDetail {
   url: string;
   gsc: GscMetrics | null;
   ga4: Ga4Metrics | null;
+  /** The project's selected counter; pageviews hit-level, the rest
+   *  session-level by landing page (see `MetricaMetrics`). */
+  metrica: MetricaMetrics | null;
   inspection: GscInspectionResult | null;
 }
 
