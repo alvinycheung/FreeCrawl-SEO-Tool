@@ -2604,8 +2604,10 @@ function computeReadability(text: string, wordCount: number): ReadabilityScores 
   }
   // Sentence boundary heuristic: . / ! / ? / … followed by whitespace or
   // end of text. Multiple terminators collapse into one. Newline already
-  // collapsed to single space upstream.
-  const sentenceMatches = text.match(/[^.!?…]+[.!?…]+/g);
+  // collapsed to single space upstream. Counting each non-terminator ->
+  // terminator boundary gives the same count as `/[^.!?…]+[.!?…]+/g`,
+  // which backtracks quadratically on a long unterminated run of text.
+  const sentenceMatches = text.match(/[^.!?…][.!?…]/g);
   const sentenceCount = sentenceMatches ? sentenceMatches.length : 1;
 
   let totalSyllables = 0;
