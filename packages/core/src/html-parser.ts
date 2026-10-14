@@ -2230,9 +2230,12 @@ function walkSchemaForValidation(
     if (typeof n !== 'object') return;
     const obj = n as Record<string, unknown>;
 
-    // Record `@id` for cross-block duplicate detection.
+    // Record `@id` for cross-block duplicate detection. Only nodes that
+    // define an entity count: a reference-only node like `{"@id": "#org"}`
+    // (optionally with other `@` keywords such as `@context`) links to a
+    // node defined elsewhere and is valid JSON-LD.
     const idVal = obj['@id'];
-    if (typeof idVal === 'string' && idVal) {
+    if (typeof idVal === 'string' && idVal && Object.keys(obj).some((k) => !k.startsWith('@'))) {
       idCounts.set(idVal, (idCounts.get(idVal) ?? 0) + 1);
     }
 
@@ -2289,8 +2292,9 @@ function walkSchemaForValidation(
     }
 
     // Recurse into nested objects/arrays (e.g. `@graph`, `mainEntity`).
-    for (const value of Object.values(obj)) {
-      if (value && (typeof value === 'object' || Array.isArray(value))) {
+    // `@context` holds term definitions, not entities, so skip it.
+    for (const [key, value] of Object.entries(obj)) {
+      if (key !== '@context' && value && (typeof value === 'object' || Array.isArray(value))) {
         visit(value);
       }
     }
