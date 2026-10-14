@@ -4109,7 +4109,10 @@ export class Crawler extends EventEmitter {
         return;
       }
       const body = decodeBody(capRead.bytes, contentType);
-      const bodyLength = parseIntSafe(contentLengthHeader) ?? capRead.bytes.length;
+      // Decoded size, not Content-Length: under gzip/br the header is the
+      // compressed transfer size, so the page-size checks would depend on
+      // the server's compression and framing.
+      const bodyLength = capRead.bytes.length;
 
       // V2 Faz 1 — JavaScript rendering pass. When `renderingMode === 'js'`
       // and the host injected a Playwright renderer, fetch the post-JS DOM
