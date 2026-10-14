@@ -11441,8 +11441,8 @@ export function categoryWhereClause(
     case 'issues:cors-wildcard-with-credentials':
       // `Access-Control-Allow-Origin: *` paired with
       // `Access-Control-Allow-Credentials: true`. Browsers reject this
-      // combination per the CORS spec, but misconfigured servers reach
-      // it and any working XSS could exfiltrate cookies cross-origin.
+      // combination per the Fetch spec, so credentialed cross-origin
+      // requests fail. A broken config, not a credential leak.
       return `is_external = 0 AND content_kind = 'html'
               AND TRIM(cors_allow_origin) = '*'
               AND cors_allow_credentials = 1`;
