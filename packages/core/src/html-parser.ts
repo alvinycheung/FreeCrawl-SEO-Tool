@@ -1595,13 +1595,19 @@ export function parseHtml(
     alt: string | null,
     width: number | null,
     height: number | null,
+    lazy: boolean,
   ): void => {
     if (!rawUrl) return;
     if (rawUrl.startsWith('data:')) return;
     const normalized = normalizeUrl(rawUrl, baseUrl, opts.urlRewrites);
     if (!normalized) return;
     if (!/^https?:/.test(normalized)) return;
-    if (imageMap.has(normalized)) return;
+    const prev = imageMap.get(normalized);
+    if (prev) {
+      // An eager use of the URL anywhere on the page wins over a lazy one.
+      if (!lazy) prev.lazy = false;
+      return;
+    }
     imageMap.set(normalized, {
       src: normalized,
       alt,
@@ -1609,6 +1615,7 @@ export function parseHtml(
       height,
       isInternal: isSameHost(pageUrl, normalized, opts),
       role: 'variant',
+      lazy,
     });
   };
 
@@ -1649,9 +1656,8 @@ export function parseHtml(
 
     // Lazy-loading adoption — `loading="lazy"` is the native browser
     // attribute and the only signal that's reliable without rendering JS.
-    if (($el.attr('loading') ?? '').trim().toLowerCase() === 'lazy') {
-      imagesLazy++;
-    }
+    const lazy = ($el.attr('loading') ?? '').trim().toLowerCase() === 'lazy';
+    if (lazy) imagesLazy++;
 
     // Responsive imagery — an `<img>` is "responsive" if it carries
     // `srcset` itself OR is wrapped in `<picture>` (the parent supplies
@@ -1665,12 +1671,14 @@ export function parseHtml(
 
     // The same URL in several `<img>`: `alt` keeps the first real alt for
     // the alt-text checks, and `altMissing` records that any of them had
-    // none. An earlier `<img>`'s srcset may already hold this URL as a
-    // variant; the element's own alt wins over the variant stub.
+    // none. An eager load on any of them wins. An earlier `<img>`'s srcset
+    // may already hold this URL as a variant; the element's own alt wins
+    // over the variant stub.
     const prev = imageMap.get(normalized);
     if (prev && !prev.role) {
       if (alt === null) prev.altMissing = true;
       else if (prev.alt === null) prev.alt = alt;
+      if (!lazy) prev.lazy = false;
     } else {
       imageMap.set(normalized, {
         src: normalized,
@@ -1679,6 +1687,7 @@ export function parseHtml(
         height,
         isInternal,
         altMissing: alt === null,
+        lazy: lazy && prev?.lazy !== false,
       });
     }
 
@@ -1686,7 +1695,7 @@ export function parseHtml(
     // pages that trigger Broken-Image / Large-Image probes pick them up.
     if (srcsetAttr) {
       for (const candidate of parseSrcset(srcsetAttr)) {
-        addImageCandidate(candidate, alt, null, null);
+        addImageCandidate(candidate, alt, null, null, lazy);
       }
     }
   });
@@ -1698,8 +1707,9 @@ export function parseHtml(
   $('picture > source[srcset]').each((_, el) => {
     const srcsetAttr = ($(el).attr('srcset') ?? '').trim();
     if (!srcsetAttr) return;
+    const lazy = ($(el).siblings('img').attr('loading') ?? '').trim().toLowerCase() === 'lazy';
     for (const candidate of parseSrcset(srcsetAttr)) {
-      addImageCandidate(candidate, null, null, null);
+      addImageCandidate(candidate, null, null, null, lazy);
     }
   });
 

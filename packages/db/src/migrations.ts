@@ -2406,6 +2406,21 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 97,
+    name: 'add_image_usages_lazy',
+    // 1 / 0 for whether the `<img>` behind this usage has loading="lazy";
+    // NULL for share-card images and rows from before this column. Lets
+    // Slow-Loading Images test the large image itself, not the page.
+    up: (db) => {
+      const cols = db.prepare('PRAGMA table_info(image_usages)').all() as unknown as {
+        name: string;
+      }[];
+      if (!cols.some((c) => c.name === 'lazy')) {
+        db.exec('ALTER TABLE image_usages ADD COLUMN lazy INTEGER');
+      }
+    },
+  },
 ];
 
 export function runMigrations(db: DatabaseSync): void {

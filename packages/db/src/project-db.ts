@@ -4199,12 +4199,13 @@ export class ProjectDb {
        RETURNING id`,
     );
     const upsertUsage = this.db.prepare(
-      `INSERT INTO image_usages (from_url_id, image_id, alt, role, alt_missing)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO image_usages (from_url_id, image_id, alt, role, alt_missing, lazy)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(from_url_id, image_id) DO UPDATE SET
          alt = excluded.alt,
          role = excluded.role,
-         alt_missing = excluded.alt_missing`,
+         alt_missing = excluded.alt_missing,
+         lazy = excluded.lazy`,
     );
     const ownsTx = !this.isInTransaction();
     if (ownsTx) this.db.exec('BEGIN');
@@ -4217,7 +4218,14 @@ export class ProjectDb {
           img.height,
           img.isInternal ? 1 : 0,
         ) as { id: number };
-        upsertUsage.run(fromUrlId, row.id, img.alt, img.role ?? null, img.altMissing ? 1 : 0);
+        upsertUsage.run(
+          fromUrlId,
+          row.id,
+          img.alt,
+          img.role ?? null,
+          img.altMissing ? 1 : 0,
+          img.lazy === undefined ? null : img.lazy ? 1 : 0,
+        );
       }
       if (ownsTx) this.db.exec('COMMIT');
     } catch (err) {
@@ -10218,16 +10226,15 @@ export const EXPENSIVE_ISSUE_DEFINITIONS: ReadonlyArray<readonly [string, string
   ],
   [
     'issues:image-slow-loading',
-    // ≥1 image > 200 KB AND the page is missing lazy-loading on at least
-    // one image (images_lazy < images_count). The size join is on the
-    // per-image probed `byte_size`; lazy adoption stays page-level.
+    // ≥1 image > 200 KB that the page loads without loading="lazy". Both
+    // tests apply to the same usage, so a lazy hero plus a small eager
+    // logo is not flagged. Share cards (`lazy` NULL) are not page images.
     `is_external = 0 AND content_kind = 'html'
-     AND images_count > 0 AND images_lazy < images_count
      AND id IN (
        SELECT iu.from_url_id
          FROM image_usages iu
          JOIN images i ON i.id = iu.image_id
-        WHERE i.byte_size > 204800
+        WHERE i.byte_size > 204800 AND iu.lazy = 0
      )`,
   ],
   [

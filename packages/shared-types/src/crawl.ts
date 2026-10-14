@@ -2219,6 +2219,9 @@ export interface DiscoveredImage {
   /** True when any `<img>` with this URL on the page has no alt attribute.
    *  `alt` still holds the first real alt for the alt-text checks. */
   altMissing?: boolean;
+  /** `loading="lazy"` on the `<img>` (a variant takes its `<img>`'s value).
+   *  Unset for share-card images, which the page never loads. */
+  lazy?: boolean;
 }
 
 /**
