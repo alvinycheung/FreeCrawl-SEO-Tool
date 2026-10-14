@@ -241,6 +241,14 @@ export interface ParsedPage {
   /** Number of `<img>` with explicit `alt=""` (decorative — distinct from missing alt). */
   imagesEmptyAlt: number;
   /**
+   * Number of `<img src>` elements. `images` holds every distinct URL,
+   * including srcset / `<picture>` candidates and og/twitter cards, so its
+   * length is not an element count.
+   */
+  imagesCount: number;
+  /** Number of `<img src>` elements with no `alt` attribute. */
+  imagesMissingAlt: number;
+  /**
    * Number of `<img>` declaring `loading="lazy"`. Combined with the total
    * image count this lets the UI surface pages where lazy-loading isn't
    * adopted on image-heavy pages — a common LCP / CLS optimisation lever.
@@ -1550,6 +1558,8 @@ export function parseHtml(
   });
 
   let imagesEmptyAlt = 0;
+  let imagesCount = 0;
+  let imagesMissingAlt = 0;
   let imagesLazy = 0;
   let imagesResponsive = 0;
   const imageMap = new Map<string, DiscoveredImage>();
@@ -1628,6 +1638,8 @@ export function parseHtml(
       // image_usages rows whose alt is null.
       if (altAttr.trim() === '') imagesEmptyAlt++;
     }
+    imagesCount++;
+    if (alt === null) imagesMissingAlt++;
     const width = parseIntAttr($el.attr('width'));
     const height = parseIntAttr($el.attr('height'));
     const isInternal = isSameHost(pageUrl, normalized, opts);
@@ -1772,6 +1784,8 @@ export function parseHtml(
     sentenceCount: readability.sentenceCount,
     complexWordCount: readability.complexWordCount,
     imagesEmptyAlt,
+    imagesCount,
+    imagesMissingAlt,
     imagesLazy,
     imagesResponsive,
     pictureCount,

@@ -4256,7 +4256,6 @@ export class Crawler extends EventEmitter {
         }
       }
 
-      const imagesMissingAlt = parsed.images.filter((img) => img.alt === null).length;
       // Phase 1b — Build the entire per-URL write payload up front and
       // ship it across the writer-worker boundary in one shot. The
       // worker runs the upsert + headers + body snapshot + links +
@@ -4307,8 +4306,8 @@ export class Crawler extends EventEmitter {
           ttfbMs,
           depth: item.depth,
           outlinks: storableLinks.length,
-          imagesCount: parsed.images.length,
-          imagesMissingAlt,
+          imagesCount: parsed.imagesCount,
+          imagesMissingAlt: parsed.imagesMissingAlt,
           lang: parsed.lang,
           viewport: parsed.viewport,
           ogTitle: parsed.ogTitle,
