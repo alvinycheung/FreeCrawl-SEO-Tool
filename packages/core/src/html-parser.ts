@@ -1606,6 +1606,7 @@ export function parseHtml(
       width,
       height,
       isInternal: isSameHost(pageUrl, normalized, opts),
+      role: 'variant',
     });
   };
 
@@ -1660,13 +1661,22 @@ export function parseHtml(
     const inPicture = $el.parent('picture').length > 0;
     if (srcsetAttr || inPicture) imagesResponsive++;
 
-    if (!imageMap.has(normalized)) {
+    // The same URL in several `<img>`: `alt` keeps the first real alt for
+    // the alt-text checks, and `altMissing` records that any of them had
+    // none. An earlier `<img>`'s srcset may already hold this URL as a
+    // variant; the element's own alt wins over the variant stub.
+    const prev = imageMap.get(normalized);
+    if (prev && !prev.role) {
+      if (alt === null) prev.altMissing = true;
+      else if (prev.alt === null) prev.alt = alt;
+    } else {
       imageMap.set(normalized, {
         src: normalized,
         alt,
         width,
         height,
         isInternal,
+        altMissing: alt === null,
       });
     }
 
@@ -1697,7 +1707,10 @@ export function parseHtml(
   // Facebook/Twitter will refuse to render the card. We stub them as
   // image rows with no alt/dimensions; the existing size-probe pass
   // will fill `byte_size` automatically post-crawl.
-  for (const ogish of [ogImage, twitterImage]) {
+  for (const [ogish, role] of [
+    [ogImage, 'og'],
+    [twitterImage, 'twitter'],
+  ] as const) {
     if (!ogish) continue;
     const normalized = normalizeUrl(ogish, baseUrl, opts.urlRewrites);
     if (!normalized) continue;
@@ -1709,6 +1722,7 @@ export function parseHtml(
       width: null,
       height: null,
       isInternal: isSameHost(pageUrl, normalized, opts),
+      role,
     });
   }
 

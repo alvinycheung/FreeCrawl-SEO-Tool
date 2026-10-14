@@ -891,6 +891,11 @@ const USAGE_DUPLICATE_ALT_PREDICATE = `iu.alt IS NOT NULL AND iu.alt != '' AND i
   SELECT alt FROM image_usages WHERE alt IS NOT NULL AND alt != '' GROUP BY alt HAVING COUNT(*) > 1
 )`;
 
+// Per-usage missing alt: an `<img>` usage where some occurrence on the page
+// had no alt attribute (`alt_missing`; `alt IS NULL` for rows stored before
+// that column). srcset / share-card rows (`role` set) carry no alt.
+const USAGE_MISSING_ALT_PREDICATE = 'iu.role IS NULL AND (iu.alt IS NULL OR iu.alt_missing = 1)';
+
 // Missing / empty alt are computed from PER-USAGE truth (`image_usages.alt`):
 // the Images tab, its sidebar counters and the CSV export are all per-usage
 // (one row per image+page), so `images.alt` — a lossy first-non-null-wins
@@ -4186,9 +4191,12 @@ export class ProjectDb {
        RETURNING id`,
     );
     const upsertUsage = this.db.prepare(
-      `INSERT INTO image_usages (from_url_id, image_id, alt)
-       VALUES (?, ?, ?)
-       ON CONFLICT(from_url_id, image_id) DO UPDATE SET alt = excluded.alt`,
+      `INSERT INTO image_usages (from_url_id, image_id, alt, role, alt_missing)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(from_url_id, image_id) DO UPDATE SET
+         alt = excluded.alt,
+         role = excluded.role,
+         alt_missing = excluded.alt_missing`,
     );
     const ownsTx = !this.isInTransaction();
     if (ownsTx) this.db.exec('BEGIN');
@@ -4201,7 +4209,7 @@ export class ProjectDb {
           img.height,
           img.isInternal ? 1 : 0,
         ) as { id: number };
-        upsertUsage.run(fromUrlId, row.id, img.alt);
+        upsertUsage.run(fromUrlId, row.id, img.alt, img.role ?? null, img.altMissing ? 1 : 0);
       }
       if (ownsTx) this.db.exec('COMMIT');
     } catch (err) {
@@ -5876,7 +5884,7 @@ export class ProjectDb {
       const where: string[] = [];
       const args: (string | number)[] = [];
       if (params.internalOnly) where.push('i.is_internal = 1');
-      if (params.missingAltOnly) where.push('iu.alt IS NULL');
+      if (params.missingAltOnly) where.push(USAGE_MISSING_ALT_PREDICATE);
       if (params.emptyAltOnly) where.push("iu.alt = ''");
       if (params.duplicateAltOnly) where.push(USAGE_DUPLICATE_ALT_PREDICATE);
       if (params.search) {
@@ -6489,7 +6497,7 @@ export class ProjectDb {
         // Per-usage to match the per-usage Images tab (count = table). Legacy
         // projects with no usage rows fall back to the distinct-image count.
         `SELECT (CASE WHEN EXISTS(SELECT 1 FROM image_usages)
-           THEN (SELECT COUNT(*) FROM image_usages WHERE alt IS NULL)
+           THEN (SELECT COUNT(*) FROM image_usages iu WHERE ${USAGE_MISSING_ALT_PREDICATE})
            ELSE (SELECT COUNT(*) FROM images WHERE alt IS NULL) END) AS c`,
       ),
       // Distinct images sharing a non-empty alt with ≥1 other image —
@@ -7483,7 +7491,7 @@ export class ProjectDb {
     const minBytes = Math.max(0, Math.floor(options.minByteSize ?? 0));
     // Per-usage export to match the per-usage Images tab (one row per page).
     if (this.hasImageUsages()) {
-      if (options.missingAltOnly) where.push('iu.alt IS NULL');
+      if (options.missingAltOnly) where.push(USAGE_MISSING_ALT_PREDICATE);
       if (options.emptyAltOnly) where.push("iu.alt = ''");
       if (options.duplicateAltOnly) where.push(USAGE_DUPLICATE_ALT_PREDICATE);
       if (options.search) {

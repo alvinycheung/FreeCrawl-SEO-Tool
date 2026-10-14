@@ -2209,6 +2209,15 @@ export interface DiscoveredImage {
   width: number | null;
   height: number | null;
   isInternal: boolean;
+  /**
+   * Set when the URL is not an `<img src>`: a srcset / `<picture><source>`
+   * candidate (`variant`) or a share-card image (`og`, `twitter`). These
+   * rows are probed like any image but have no alt attribute of their own.
+   */
+  role?: 'variant' | 'og' | 'twitter';
+  /** True when any `<img>` with this URL on the page has no alt attribute.
+   *  `alt` still holds the first real alt for the alt-text checks. */
+  altMissing?: boolean;
 }
 
 /**

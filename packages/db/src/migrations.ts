@@ -2366,6 +2366,26 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 95,
+    name: 'add_image_usages_role',
+    // NULL for an `<img src>`; 'variant' / 'og' / 'twitter' for srcset and
+    // `<picture>` candidates and share-card images. Those rows have no alt
+    // attribute of their own, so the alt checks skip them. `alt_missing` is
+    // 1 when any `<img>` with the URL on that page has no alt, while `alt`
+    // keeps the first real alt for the empty / duplicate alt checks.
+    up: (db) => {
+      const cols = db.prepare('PRAGMA table_info(image_usages)').all() as unknown as {
+        name: string;
+      }[];
+      if (!cols.some((c) => c.name === 'role')) {
+        db.exec('ALTER TABLE image_usages ADD COLUMN role TEXT');
+      }
+      if (!cols.some((c) => c.name === 'alt_missing')) {
+        db.exec('ALTER TABLE image_usages ADD COLUMN alt_missing INTEGER');
+      }
+    },
+  },
 ];
 
 export function runMigrations(db: DatabaseSync): void {
