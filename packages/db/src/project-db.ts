@@ -10051,6 +10051,31 @@ const ISSUE_WRITE_BATCH = 2_000;
 export const ISSUE_MATERIALISATION_VERSION = '2';
 const ISSUE_VERSION_META_KEY = 'urlsIssuesVersion';
 
+/**
+ * External URL whose probe failed: an HTTP error status, or a network
+ * failure, which is stored with a NULL status and the `formatFetchError`
+ * chain as status_text. Only real network error codes and the timeout /
+ * abort text count, so local request errors, SSRF-guard skips, robots
+ * blocks and unprobed stubs do not. 401/403/407/429/999 are excluded: an
+ * origin that answers auth walls, bot blocks or rate limits is alive
+ * (999 is LinkedIn's bot block).
+ */
+const EXTERNAL_PROBE_FAILED_SQL = `((status_code >= 400 AND status_code NOT IN (401, 403, 407, 429, 999))
+  OR (status_code IS NULL AND (${[
+    'ENOTFOUND',
+    'EAI_AGAIN',
+    'ECONNREFUSED',
+    'ECONNRESET',
+    'ETIMEDOUT',
+    'EHOSTUNREACH',
+    'ENETUNREACH',
+    'UND_ERR_CONNECT_TIMEOUT',
+    'UND_ERR_HEADERS_TIMEOUT',
+    'aborted',
+  ]
+    .map((code) => `status_text LIKE '%${code}%'`)
+    .join(' OR ')})))`;
+
 export const EXPENSIVE_ISSUE_DEFINITIONS: ReadonlyArray<readonly [string, string]> = [
   [
     'issues:dead-external-domain',
@@ -10059,23 +10084,27 @@ export const EXPENSIVE_ISSUE_DEFINITIONS: ReadonlyArray<readonly [string, string
     // index — one pass over `links` and one over the external rows. The
     // previous correlated `EXISTS (… JOIN …)` re-ran the host grouping
     // per page and scaled with pages × outlinks.
+    // Only links whose own target failed are flagged; a link to a URL
+    // that answered on a mostly-dead host is not.
     `is_external = 0 AND content_kind = 'html'
      AND id IN (
        SELECT l.from_url_id
          FROM links l
         WHERE l.is_internal = 0
           AND l.to_url IN (
-            SELECT eu.url
-              FROM urls eu
-             WHERE eu.is_external = 1
-               AND ${urlHostSql('eu.url')} IN (
+            SELECT url
+              FROM urls
+             WHERE is_external = 1
+               AND ${EXTERNAL_PROBE_FAILED_SQL}
+               AND ${urlHostSql('url')} IN (
                  SELECT host_grouped FROM (
                    SELECT
                      ${urlHostSql('url')} AS host_grouped,
                      COUNT(*) AS total,
-                     SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS errors
+                     SUM(CASE WHEN ${EXTERNAL_PROBE_FAILED_SQL} THEN 1 ELSE 0 END) AS errors
                    FROM urls
-                   WHERE is_external = 1 AND status_code IS NOT NULL
+                   WHERE is_external = 1
+                     AND (status_code IS NOT NULL OR ${EXTERNAL_PROBE_FAILED_SQL})
                    GROUP BY host_grouped
                    HAVING total >= 3 AND CAST(errors AS REAL) / total >= 0.8
                  )
