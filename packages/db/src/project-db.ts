@@ -885,11 +885,16 @@ const DUPLICATE_ALT_PREDICATE = `alt IS NOT NULL AND alt != '' AND alt IN (
   SELECT alt FROM images WHERE alt IS NOT NULL AND alt != '' GROUP BY alt HAVING COUNT(*) > 1
 )`;
 
-// Per-usage duplicate-alt: a usage whose alt text is shared by >1 usage.
-// Operates on `image_usages.alt` to match the per-usage Images view.
-const USAGE_DUPLICATE_ALT_PREDICATE = `iu.alt IS NOT NULL AND iu.alt != '' AND iu.alt IN (
-  SELECT alt FROM image_usages WHERE alt IS NOT NULL AND alt != '' GROUP BY alt HAVING COUNT(*) > 1
-)`;
+// Per-usage duplicate-alt: an `<img>` usage whose alt text is also used on
+// at least one other image file. Operates on `image_usages.alt` to match the
+// per-usage Images view. One image reused on many pages with the same alt is
+// not a duplicate, and srcset / share-card rows (`role` set) carry no alt.
+const USAGE_DUPLICATE_ALT_PREDICATE = `iu.role IS NULL AND iu.alt IS NOT NULL AND iu.alt != ''
+  AND iu.alt IN (
+    SELECT alt FROM image_usages
+     WHERE role IS NULL AND alt IS NOT NULL AND alt != ''
+     GROUP BY alt HAVING COUNT(DISTINCT image_id) > 1
+  )`;
 
 // Per-usage missing alt: an `<img>` usage where some occurrence on the page
 // had no alt attribute (`alt_missing`; `alt IS NULL` for rows stored before
@@ -6239,7 +6244,14 @@ export class ProjectDb {
     // tab shows exactly the rows this headline counts.
     const totalIndexable = countCategory('indexability:indexable');
     const totalNonIndexable = countCategory('indexability:non-indexable');
-    const totalImages = this.scalarCount('SELECT COUNT(*) AS c FROM images');
+    // Denominator of the alt percentages. Those counters count Images tab
+    // rows (one per image + page), so the base is the tab's row count;
+    // legacy projects without usage rows count distinct images.
+    const totalImages = this.scalarCount(
+      `SELECT (CASE WHEN EXISTS(SELECT 1 FROM image_usages)
+         THEN (SELECT COUNT(*) FROM image_usages)
+         ELSE (SELECT COUNT(*) FROM images) END) AS c`,
+    );
 
     return {
       summary: {
@@ -6500,12 +6512,18 @@ export class ProjectDb {
            THEN (SELECT COUNT(*) FROM image_usages iu WHERE ${USAGE_MISSING_ALT_PREDICATE})
            ELSE (SELECT COUNT(*) FROM images WHERE alt IS NULL) END) AS c`,
       ),
-      // Distinct images sharing a non-empty alt with ≥1 other image —
-      // non-descriptive / templated alt reuse. Counted image-level (the
-      // `images` table is deduped by src) so it lines up with the Images
-      // tab drill-down and with Missing/Empty Alt.
+      // Images sharing a non-empty alt with ≥1 other image — non-descriptive
+      // / templated alt reuse. Per-usage like Missing Alt, so the count is
+      // the Images tab row count. Legacy projects fall back to `images`.
       imageDuplicateAlt: this.scalarCount(
-        `SELECT COUNT(*) AS c FROM images WHERE ${DUPLICATE_ALT_PREDICATE}`,
+        `SELECT (CASE WHEN EXISTS(SELECT 1 FROM image_usages)
+           THEN (SELECT COALESCE(SUM(n), 0) FROM (
+             -- Same rows as USAGE_DUPLICATE_ALT_PREDICATE, in one grouped
+             -- pass over idx_image_usages_alt instead of a scan per usage.
+             SELECT COUNT(*) AS n FROM image_usages
+              WHERE role IS NULL AND alt IS NOT NULL AND alt != ''
+              GROUP BY alt HAVING COUNT(DISTINCT image_id) > 1))
+           ELSE (SELECT COUNT(*) FROM images WHERE ${DUPLICATE_ALT_PREDICATE}) END) AS c`,
       ),
       metaRefreshUsed: countWhere(
         `${html} AND meta_refresh IS NOT NULL AND meta_refresh != ''`,
@@ -10813,6 +10831,14 @@ export function categoryWhereClause(
               AND EXISTS (SELECT 1 FROM sitemap_urls s WHERE s.url = urls.url)`;
     case 'issues:image-missing-alt':
       return "is_external = 0 AND content_kind = 'html' AND images_missing_alt > 0";
+    case 'issues:image-duplicate-alt':
+      // The Images tab lists the image rows; URL-level consumers (bulk
+      // export, severity tiers) get the pages that use them.
+      return `is_external = 0 AND content_kind = 'html'
+              AND id IN (
+                SELECT iu.from_url_id FROM image_usages iu
+                 WHERE ${USAGE_DUPLICATE_ALT_PREDICATE}
+              )`;
     case 'issues:meta-refresh-used':
       // Any HTML page that declares a `<meta http-equiv="refresh">` —
       // Google explicitly recommends 301 over meta refresh, so every

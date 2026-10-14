@@ -2384,6 +2384,10 @@ const MIGRATIONS: Migration[] = [
       if (!cols.some((c) => c.name === 'alt_missing')) {
         db.exec('ALTER TABLE image_usages ADD COLUMN alt_missing INTEGER');
       }
+      // Duplicate Alt Text groups `<img>` usages by alt, then counts the
+      // distinct images per alt. The WHERE matches the check's own filter.
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_image_usages_alt ON image_usages(alt, image_id)
+                 WHERE role IS NULL AND alt IS NOT NULL AND alt != ''`);
     },
   },
 ];

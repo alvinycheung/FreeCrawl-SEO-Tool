@@ -1743,8 +1743,9 @@ export interface OverviewCounts {
     totalIndexable: number;
     totalNonIndexable: number;
     totalExternalUrls: number;
-    /** Total distinct images discovered — the correct denominator for the
-     *  image-level alt issues (missing / empty / duplicate alt). */
+    /** Images tab row count (one per image + page; distinct images in
+     *  legacy projects) — the denominator for the per-usage alt issues
+     *  (missing / empty / duplicate alt). */
     totalImages: number;
   };
   internal: Record<string, number>;
