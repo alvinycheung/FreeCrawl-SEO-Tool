@@ -442,6 +442,7 @@ export interface UpsertUrlInput {
   ogTitle?: string | null;
   ogDescription?: string | null;
   ogImage?: string | null;
+  ogImageSrc?: string | null;
   twitterCard?: string | null;
   twitterTitle?: string | null;
   twitterDescription?: string | null;
@@ -625,7 +626,7 @@ const UPSERT_URL_SQL = `
     canonical_cross_domain, canonical_count, canonical_http, meta_robots, x_robots_tag,
     content_type, content_length, response_time_ms, depth, outlinks, redirect_target,
     images_count, images_missing_alt,
-    lang, viewport, og_title, og_description, og_image,
+    lang, viewport, og_title, og_description, og_image, og_image_src,
     twitter_card, twitter_title, twitter_description, twitter_image,
     meta_keywords, meta_author, meta_generator, theme_color,
     hsts, x_frame_options, x_content_type_options, content_encoding,
@@ -668,7 +669,7 @@ const UPSERT_URL_SQL = `
     :canonical_cross_domain, :canonical_count, :canonical_http, :meta_robots, :x_robots_tag,
     :content_type, :content_length, :response_time_ms, :depth, :outlinks, :redirect_target,
     :images_count, :images_missing_alt,
-    :lang, :viewport, :og_title, :og_description, :og_image,
+    :lang, :viewport, :og_title, :og_description, :og_image, :og_image_src,
     :twitter_card, :twitter_title, :twitter_description, :twitter_image,
     :meta_keywords, :meta_author, :meta_generator, :theme_color,
     :hsts, :x_frame_options, :x_content_type_options, :content_encoding,
@@ -744,6 +745,7 @@ const UPSERT_URL_SQL = `
     og_title = excluded.og_title,
     og_description = excluded.og_description,
     og_image = excluded.og_image,
+    og_image_src = excluded.og_image_src,
     twitter_card = excluded.twitter_card,
     twitter_title = excluded.twitter_title,
     twitter_description = excluded.twitter_description,
@@ -2139,6 +2141,7 @@ export class ProjectDb {
       og_title: input.ogTitle ?? null,
       og_description: input.ogDescription ?? null,
       og_image: input.ogImage ?? null,
+      og_image_src: input.ogImageSrc ?? null,
       twitter_card: input.twitterCard ?? null,
       twitter_title: input.twitterTitle ?? null,
       twitter_description: input.twitterDescription ?? null,
@@ -10241,9 +10244,15 @@ export const EXPENSIVE_ISSUE_DEFINITIONS: ReadonlyArray<readonly [string, string
   ],
   [
     'issues:og-image-too-large',
+    // `og_image` is the raw meta value while `images.src` is normalised, so
+    // a relative or `&amp;`-escaped og:image only matches through
+    // `og_image_src`. The raw match covers rows stored before that column.
     `is_external = 0 AND content_kind = 'html'
      AND og_image IS NOT NULL AND og_image != ''
-     AND og_image IN (SELECT src FROM images WHERE byte_size > 5242880)`,
+     AND (
+       og_image_src IN (SELECT src FROM images WHERE byte_size > 5242880)
+       OR og_image IN (SELECT src FROM images WHERE byte_size > 5242880)
+     )`,
   ],
   [
     'issues:twitter-image-too-large',

@@ -2390,6 +2390,22 @@ const MIGRATIONS: Migration[] = [
                  WHERE role IS NULL AND alt IS NOT NULL AND alt != ''`);
     },
   },
+  {
+    version: 96,
+    name: 'add_urls_og_image_src',
+    // The og:image resolved and normalised the way `images.src` is, so OG
+    // Image >5MB can match a relative or entity-escaped og:image to its
+    // probed image row. `og_image` keeps the raw value for the
+    // not-absolute check.
+    up: (db) => {
+      const cols = db.prepare('PRAGMA table_info(urls)').all() as unknown as {
+        name: string;
+      }[];
+      if (!cols.some((c) => c.name === 'og_image_src')) {
+        db.exec('ALTER TABLE urls ADD COLUMN og_image_src TEXT');
+      }
+    },
+  },
 ];
 
 export function runMigrations(db: DatabaseSync): void {

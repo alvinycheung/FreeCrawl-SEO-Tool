@@ -4313,6 +4313,7 @@ export class Crawler extends EventEmitter {
           ogTitle: parsed.ogTitle,
           ogDescription: parsed.ogDescription,
           ogImage: parsed.ogImage,
+          ogImageSrc: parsed.ogImageSrc,
           ogType: parsed.ogType,
           ogUrl: parsed.ogUrl,
           ogSiteName: parsed.ogSiteName,

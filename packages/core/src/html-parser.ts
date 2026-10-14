@@ -92,6 +92,8 @@ export interface ParsedPage {
   ogTitle: string | null;
   ogDescription: string | null;
   ogImage: string | null;
+  /** `ogImage` resolved and normalised like `images.src`; null when unusable. */
+  ogImageSrc: string | null;
   /** `og:type` value (e.g. `website`, `article`, `product`), lowercased. */
   ogType: string | null;
   /** Raw `og:url` attribute value — verbatim, not resolved. */
@@ -1707,6 +1709,7 @@ export function parseHtml(
   // Facebook/Twitter will refuse to render the card. We stub them as
   // image rows with no alt/dimensions; the existing size-probe pass
   // will fill `byte_size` automatically post-crawl.
+  let ogImageSrc: string | null = null;
   for (const [ogish, role] of [
     [ogImage, 'og'],
     [twitterImage, 'twitter'],
@@ -1715,6 +1718,7 @@ export function parseHtml(
     const normalized = normalizeUrl(ogish, baseUrl, opts.urlRewrites);
     if (!normalized) continue;
     if (!/^https?:/.test(normalized)) continue;
+    if (role === 'og') ogImageSrc = normalized;
     if (imageMap.has(normalized)) continue;
     imageMap.set(normalized, {
       src: normalized,
@@ -1749,6 +1753,7 @@ export function parseHtml(
     ogTitle,
     ogDescription,
     ogImage,
+    ogImageSrc,
     ogType,
     ogUrl,
     ogSiteName,
