@@ -807,10 +807,25 @@ export function parseHtml(
   // occurrences (not the type vocabulary), because the data model varies
   // per author and the Issues panel only needs presence/absence to flag a
   // missing-structured-data page. Schema.org microdata uses `itemscope`;
-  // RDFa uses `typeof` / `vocab` / `property`.
+  // RDFa uses `typeof` / `vocab` / `property`. Open Graph, Facebook and
+  // Twitter `<meta property>` tags are not structured data, so they don't
+  // count as RDFa.
   const microdataCount = $('[itemscope]').length;
+  const SOCIAL_META_PROPERTY = /^(og|fb|twitter|article|book|profile|music|video):/i;
   const rdfaCount =
-    $('[typeof]').length + $('[vocab]').length + $('[property]').length;
+    $('[typeof], [vocab]').length +
+    $('[property]')
+      .not('[typeof], [vocab]')
+      .filter(
+        (_, el) =>
+          !(
+            el.tagName === 'meta' &&
+            ($(el).attr('property') ?? '')
+              .trim()
+              .split(/\s+/)
+              .every((token) => SOCIAL_META_PROPERTY.test(token))
+          ),
+      ).length;
 
   // Insecure form action — HTTPS page with `<form action="http://…">`.
   // Browsers warn ("not secure" interstitial) when the user submits.
