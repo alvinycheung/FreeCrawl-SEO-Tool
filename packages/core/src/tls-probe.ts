@@ -1,4 +1,4 @@
-import { connect, type PeerCertificate } from 'node:tls';
+import { connect, type PeerCertificate, type TLSSocket } from 'node:tls';
 
 /**
  * Result of probing the TLS certificate served by `host:port`. All string
@@ -15,6 +15,13 @@ export interface TlsCertInfo {
   signatureAlgorithm: string | null;
   /** Negotiated TLS protocol version, e.g. `TLSv1.3`. */
   protocol: string | null;
+  /**
+   * Version negotiated by a second handshake capped at TLS 1.1 (`TLSv1`
+   * or `TLSv1.1`). Null when the server refuses TLS 1.0 / 1.1.
+   * `untested` when the handshake could not be tried: the main connection
+   * failed before TLS, or the TLS library rejects the legacy options.
+   */
+  legacyProtocol: string | null;
   /**
    * Number of certificates the server presented in its chain (leaf
    * inclusive). 1 means leaf-only / self-signed; 2 means leaf + root
@@ -49,7 +56,10 @@ export async function probeTlsCert(
   port = 443,
   timeoutMs = 10_000,
 ): Promise<TlsCertInfo> {
-  return await new Promise<TlsCertInfo>((resolve) => {
+  // Set when TCP connected and the handshake did not time out, i.e. the
+  // server answered. Gates the legacy probe so dead hosts cost one try.
+  let serverAnswered = false;
+  const info = await new Promise<TlsCertInfo>((resolve) => {
     const empty: TlsCertInfo = {
       validFrom: null,
       validTo: null,
@@ -58,6 +68,7 @@ export async function probeTlsCert(
       subject: null,
       signatureAlgorithm: null,
       protocol: null,
+      legacyProtocol: null,
       chainLength: null,
       chainSubjects: null,
       error: null,
@@ -76,6 +87,7 @@ export async function probeTlsCert(
     };
 
     const timer = setTimeout(() => {
+      serverAnswered = false;
       finish({ ...empty, error: `tls handshake timed out after ${timeoutMs}ms` });
     }, timeoutMs);
 
@@ -150,6 +162,7 @@ export async function probeTlsCert(
               (peer as { signatureAlgorithm?: string }).signatureAlgorithm ??
               null,
             protocol,
+            legacyProtocol: null,
             chainLength,
             chainSubjects: chainSubjects.length > 0 ? chainSubjects : null,
             error: null,
@@ -169,9 +182,71 @@ export async function probeTlsCert(
     });
     socket.on('timeout', () => {
       clearTimeout(timer);
+      serverAnswered = false;
       finish({ ...empty, error: 'socket timeout' });
     });
+    socket.on('connect', () => {
+      serverAnswered = true;
+    });
     socket.setTimeout(timeoutMs);
+  });
+  // Also runs when the main handshake failed at the TLS level: a server
+  // that only speaks TLS 1.0 / 1.1 fails it but is the worst case.
+  info.legacyProtocol = serverAnswered
+    ? await probeLegacyProtocol(host, port, timeoutMs)
+    : 'untested';
+  return info;
+}
+
+const LEGACY_CIPHERS = [
+  'ECDHE-ECDSA-AES128-SHA',
+  'ECDHE-ECDSA-AES256-SHA',
+  'ECDHE-RSA-AES128-SHA',
+  'ECDHE-RSA-AES256-SHA',
+  'AES128-SHA',
+  'AES256-SHA',
+  '@SECLEVEL=0',
+].join(':');
+
+/**
+ * The main handshake negotiates the best version both sides support, so
+ * it never shows whether the server still accepts TLS 1.0 / 1.1. This one
+ * offers only those versions, with an explicit list of the CBC suites
+ * TLS 1.0 / 1.1 servers use. `@SECLEVEL=0` lets OpenSSL 3+ use them.
+ * Resolves to the negotiated version, null when the server refuses or the
+ * handshake fails, or `untested`.
+ */
+async function probeLegacyProtocol(
+  host: string,
+  port: number,
+  timeoutMs: number,
+): Promise<string | null> {
+  return await new Promise<string | null>((resolve) => {
+    let socket: TLSSocket | undefined;
+    const finish = (protocol: string | null): void => {
+      socket?.destroy();
+      resolve(protocol);
+    };
+    try {
+      socket = connect(
+        {
+          host,
+          port,
+          servername: host,
+          rejectUnauthorized: false,
+          minVersion: 'TLSv1',
+          maxVersion: 'TLSv1.1',
+          ciphers: LEGACY_CIPHERS,
+        },
+        () => finish(socket?.getProtocol() ?? null),
+      );
+    } catch {
+      // A TLS library that rejects these options cannot test legacy support.
+      finish('untested');
+      return;
+    }
+    socket.on('error', () => finish(null));
+    socket.setTimeout(timeoutMs, () => finish(null));
   });
 }
 
