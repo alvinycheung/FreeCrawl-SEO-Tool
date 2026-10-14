@@ -10053,7 +10053,7 @@ const ISSUE_WRITE_BATCH = 2_000;
  * pass (`issueMaterialisationStale`) instead of showing 0 for those
  * checks until the next crawl.
  */
-export const ISSUE_MATERIALISATION_VERSION = '2';
+export const ISSUE_MATERIALISATION_VERSION = '3';
 const ISSUE_VERSION_META_KEY = 'urlsIssuesVersion';
 
 export const EXPENSIVE_ISSUE_DEFINITIONS: ReadonlyArray<readonly [string, string]> = [
