@@ -155,12 +155,9 @@ export async function probeTlsCert(
             subject: formatDistinguishedName(
               (peer as { subject?: Record<string, string> }).subject ?? null,
             ),
-            // `peer.sigalg` was added in Node 16 but typings lag behind;
-            // fall back to `signatureAlgorithm` style if not present.
-            signatureAlgorithm:
-              (peer as { sigalg?: string; signatureAlgorithm?: string }).sigalg ??
-              (peer as { signatureAlgorithm?: string }).signatureAlgorithm ??
-              null,
+            // Node exposes no signature algorithm on the cert object, so
+            // read it from the leaf's DER.
+            signatureAlgorithm: peer.raw ? certSignatureAlgorithm(peer.raw) : null,
             protocol,
             legacyProtocol: null,
             chainLength,
@@ -265,4 +262,69 @@ function formatDistinguishedName(dn: Record<string, string> | null): string | nu
   }
   if (parts.length === 0) return null;
   return parts.join(', ');
+}
+
+/** OpenSSL short names for the common certificate signature algorithms. */
+const SIGNATURE_ALGORITHMS: Record<string, string> = {
+  '1.2.840.113549.1.1.2': 'md2WithRSAEncryption',
+  '1.2.840.113549.1.1.4': 'md5WithRSAEncryption',
+  '1.2.840.113549.1.1.5': 'sha1WithRSAEncryption',
+  '1.3.14.3.2.29': 'sha1WithRSA',
+  '1.2.840.10040.4.3': 'dsa-with-SHA1',
+  '1.2.840.10045.4.1': 'ecdsa-with-SHA1',
+  '1.2.840.113549.1.1.10': 'RSASSA-PSS',
+  '1.2.840.113549.1.1.11': 'sha256WithRSAEncryption',
+  '1.2.840.113549.1.1.12': 'sha384WithRSAEncryption',
+  '1.2.840.113549.1.1.13': 'sha512WithRSAEncryption',
+  '1.2.840.113549.1.1.14': 'sha224WithRSAEncryption',
+  '2.16.840.1.101.3.4.3.2': 'dsa-with-SHA256',
+  '1.2.840.10045.4.3.1': 'ecdsa-with-SHA224',
+  '1.2.840.10045.4.3.2': 'ecdsa-with-SHA256',
+  '1.2.840.10045.4.3.3': 'ecdsa-with-SHA384',
+  '1.2.840.10045.4.3.4': 'ecdsa-with-SHA512',
+  '1.3.101.112': 'ED25519',
+  '1.3.101.113': 'ED448',
+};
+
+/**
+ * Read the outer `signatureAlgorithm` of a DER certificate:
+ * `SEQUENCE { tbsCertificate, SEQUENCE { OID, params }, signature }`.
+ * Returns the OpenSSL name, the dotted OID when the name is unknown, or
+ * null when the DER is not shaped like a certificate.
+ */
+function certSignatureAlgorithm(der: Buffer): string | null {
+  let pos = 0;
+  // Read one tag + length header at `pos` and return the content length.
+  const header = (tag: number): number | null => {
+    if (der[pos++] !== tag) return null;
+    let len = der[pos++] ?? 0;
+    if (len & 0x80) {
+      const n = len & 0x7f;
+      len = 0;
+      for (let i = 0; i < n; i++) len = len * 256 + (der[pos++] ?? 0);
+    }
+    return pos + len <= der.length ? len : null;
+  };
+  if (header(0x30) === null) return null; // Certificate
+  const tbsLen = header(0x30);
+  if (tbsLen === null) return null;
+  pos += tbsLen;
+  if (header(0x30) === null) return null; // signatureAlgorithm
+  const oidLen = header(0x06);
+  if (!oidLen) return null;
+  const bytes = der.subarray(pos, pos + oidLen);
+  const arcs: number[] = [];
+  let value = 0;
+  for (const b of bytes) {
+    value = value * 128 + (b & 0x7f);
+    if (b & 0x80) continue;
+    if (arcs.length === 0) {
+      // The first subidentifier packs the first two arcs as 40 * a + b.
+      const first = Math.min(2, Math.floor(value / 40));
+      arcs.push(first, value - first * 40);
+    } else arcs.push(value);
+    value = 0;
+  }
+  const oid = arcs.join('.');
+  return SIGNATURE_ALGORITHMS[oid] ?? oid;
 }
