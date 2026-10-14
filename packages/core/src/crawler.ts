@@ -38,11 +38,13 @@ import {
   type DigestChallenge,
   formatFetchError,
   initHttpClient,
+  directModeLookup,
   MOBILE_USER_AGENT,
   parseDigestChallenge,
   redactUrlSecrets,
 } from './http-client.js';
 import { setActiveDnsHook } from './dns-resolver.js';
+import { probeAlpn } from './alpn-probe.js';
 import { discoverSitemapUrls, fetchSitemaps, type SitemapEntry } from './sitemap.js';
 import { runJsonExtractionRules } from './extraction.js';
 import { SessionCookieJar } from './cookie-jar.js';
@@ -526,6 +528,8 @@ export class Crawler extends EventEmitter {
   /** Effective proxy resolved in the constructor, reused by the start-URL
    *  probe so it doesn't reset the global dispatcher back to direct. */
   private readonly resolvedProxy: string;
+  /** Negotiated ALPN protocol per `host:port`, probed once per host. */
+  private readonly alpnByHost = new Map<string, Promise<string | null>>();
 
   /**
    * Optional freeze-watchdog hook. The desktop main process injects a
@@ -3602,6 +3606,26 @@ export class Crawler extends EventEmitter {
     );
   }
 
+  private negotiatedProtocol(url: string): Promise<string | null> {
+    // The probe is a direct TLS connect. Under a proxy it would bypass the
+    // proxy and expose the crawler's real address, so skip it. Otherwise it
+    // resolves DNS with the same resolver as the fetch.
+    const lookup = directModeLookup();
+    if (!lookup) return Promise.resolve(null);
+    const { host, hostname, port } = new URL(url);
+    let probe = this.alpnByHost.get(host);
+    if (!probe) {
+      probe = probeAlpn(
+        hostname.replace(/^\[|\]$/g, ''),
+        Number(port) || 443,
+        Math.max(2_000, this.config.requestTimeoutMs / 2),
+        lookup as never,
+      ).catch(() => null);
+      this.alpnByHost.set(host, probe);
+    }
+    return probe;
+  }
+
   private async fetchAndProcess(item: QueueItem): Promise<void> {
     if (this.stopped) return;
     this.setOp(`crawl:fetch:${item.url}`);
@@ -3646,6 +3670,10 @@ export class Crawler extends EventEmitter {
       // Response Codes > 3xx view and `redirect_target` column are
       // populated correctly. When followRedirects is on we enqueue the
       // target, producing a full chain across multiple crawl passes.
+      // Start the per-host ALPN probe beside the fetch. It has its own
+      // timeout, outside this request's AbortController, and is awaited
+      // only at write time, after the body is read.
+      const alpnProbe = item.url.startsWith('https:') ? this.negotiatedProtocol(item.url) : null;
       const res = await this.fetchWithRetry(item.url, controller.signal);
 
       const responseTimeMs = Date.now() - t0;
@@ -3772,9 +3800,29 @@ export class Crawler extends EventEmitter {
         ? normalizeUrl(canonicalHttpRaw, item.url, this.urlRewrites)
         : null;
 
-      // HTTP protocol — heuristic via Alt-Svc (best-effort; undici doesn't
-      // surface the actually-negotiated ALPN protocol on Response).
-      const httpProtocol = detectHttpProtocol(res.headers.get('alt-svc'));
+      // HTTP protocol. undici doesn't surface the negotiated ALPN protocol
+      // on Response, so HTTPS hosts get one ALPN handshake each; an Alt-Svc
+      // h3 advertisement still wins. A failed or skipped probe stores null
+      // (unknown), not 'http/1.1'. Plain-HTTP URLs keep the Alt-Svc reading.
+      const altSvcProtocol = detectHttpProtocol(res.headers.get('alt-svc'));
+      const httpProtocolProbe =
+        altSvcProtocol === 'h3' || !alpnProbe ? Promise.resolve(altSvcProtocol) : alpnProbe;
+      // Awaited at write time. Stop (and Clear, which stops first) rejects
+      // the wait, so the catch branch's stopped-abort guard skips the write
+      // instead of resurrecting a cleared row. A timeout abort does not:
+      // the body is already read.
+      const httpProtocol = (): Promise<string | null> =>
+        new Promise((resolve, reject) => {
+          const onAbort = (): void => {
+            if (this.stopped) reject(new Error('crawler stopped'));
+          };
+          controller.signal.addEventListener('abort', onAbort, { once: true });
+          void httpProtocolProbe.then((value) => {
+            controller.signal.removeEventListener('abort', onAbort);
+            if (this.stopped) reject(new Error('crawler stopped'));
+            else resolve(value);
+          });
+        });
 
       // Query-string length — characters after the first `?` (no `?` → 0).
       const qIdx = item.url.indexOf('?');
@@ -3884,7 +3932,7 @@ export class Crawler extends EventEmitter {
             cookiesInsecure: cookieSummary.insecureCount,
             cookiesNoHttpOnly: cookieSummary.noHttpOnlyCount,
             cookiesNoSameSite: cookieSummary.noSameSiteCount,
-            httpProtocol,
+            httpProtocol: await httpProtocol(),
             queryStringLength,
             keepAlive,
             serverHeader,
@@ -4018,7 +4066,7 @@ export class Crawler extends EventEmitter {
             cookiesInsecure: cookieSummary.insecureCount,
             cookiesNoHttpOnly: cookieSummary.noHttpOnlyCount,
             cookiesNoSameSite: cookieSummary.noSameSiteCount,
-            httpProtocol,
+            httpProtocol: await httpProtocol(),
             queryStringLength,
             keepAlive,
             serverHeader,
@@ -4063,7 +4111,10 @@ export class Crawler extends EventEmitter {
         return;
       }
       const body = decodeBody(capRead.bytes, contentType);
-      const bodyLength = parseIntSafe(contentLengthHeader) ?? capRead.bytes.length;
+      // Decoded size, not Content-Length: under gzip/br the header is the
+      // compressed transfer size, so the page-size checks would depend on
+      // the server's compression and framing.
+      const bodyLength = capRead.bytes.length;
 
       // V2 Faz 1 — JavaScript rendering pass. When `renderingMode === 'js'`
       // and the host injected a Playwright renderer, fetch the post-JS DOM
@@ -4392,7 +4443,7 @@ export class Crawler extends EventEmitter {
           cookiesInsecure: cookieSummary.insecureCount,
           cookiesNoHttpOnly: cookieSummary.noHttpOnlyCount,
           cookiesNoSameSite: cookieSummary.noSameSiteCount,
-          httpProtocol,
+          httpProtocol: await httpProtocol(),
           queryStringLength,
           keepAlive,
           renderBlockingCount: parsed.renderBlockingCount,

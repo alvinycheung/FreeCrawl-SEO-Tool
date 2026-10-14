@@ -50,7 +50,6 @@ const CRITICAL: UrlCategory[] = [
   'issues:ssl-cert-expired',
   'issues:page-too-large-critical',
   'issues:page-empty',
-  'issues:cors-wildcard-with-credentials',
   'issues:http-not-https',
   'issues:mixed-content-active',
 ];
@@ -81,6 +80,9 @@ const WARNING: UrlCategory[] = [
   'issues:hsts-missing',
   'issues:x-frame-options-missing',
   'issues:x-content-type-options-missing',
+  // Browsers reject a credentialed response with ACAO `*`, so this is a
+  // broken CORS config (credentialed requests fail), not a data leak.
+  'issues:cors-wildcard-with-credentials',
   'issues:structured-data-invalid',
   'issues:pagination-broken',
   'issues:hreflang-x-default-missing',
