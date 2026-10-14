@@ -15,6 +15,11 @@ let sharedResilientLookup: ReturnType<typeof createResilientLookup> | null = nul
 /** True while the global dispatcher is a direct Agent (no proxy). Lenient TLS
  *  retry is only offered in this mode so we never silently bypass a proxy. */
 let directMode = false;
+/** The crawler's DNS lookup while connections go direct to origins, or
+ *  null under a proxy (direct sockets would bypass it). */
+export function directModeLookup(): ReturnType<typeof createResilientLookup> | null {
+  return directMode ? sharedResilientLookup : null;
+}
 /** Lazily-built dispatcher with certificate verification disabled — used ONLY
  *  as a last-resort retry when an EXTERNAL link fails TLS chain verification
  *  (incomplete chain that browsers complete via AIA fetching but Node does

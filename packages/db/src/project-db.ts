@@ -11020,7 +11020,7 @@ export function categoryWhereClause(
       // hides content from Googlebot's link-graph crawl heuristics.
       return `is_external = 0 AND content_kind = 'html' AND folder_depth > 4`;
     case 'issues:http2-not-supported':
-      // Origin advertises only HTTP/1.1 (no Alt-Svc / no h2 token).
+      // Origin negotiated HTTP/1.1 over TLS ALPN, or is plain HTTP.
       // Informational — modern browsers still work fine, but HTTP/2 is
       // a free CWV win on multi-resource pages.
       return `is_external = 0 AND content_kind = 'html'
